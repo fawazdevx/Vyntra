@@ -1,0 +1,5 @@
+{
+  "filter_paths": "lib|test|script|\\.venv",
+  "exclude_dependencies": true,
+  "detectors_to_exclude": "naming-convention,unindexed-event-address,incorrect-equality,divide-before-multiply,low-level-calls,calls-loop,uninitialized-local,missing-inheritance"
+}

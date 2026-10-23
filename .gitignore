@@ -1,0 +1,44 @@
+# Foundry build
+cache/
+out/
+lib/
+broadcast/
+
+# Dev-only notes (keep local)
+docs/
+scripts/
+
+# Logs / scratch
+.logs/
+.ignore/
+.write-test
+foundry.lock
+docs/
+# Secrets — keep examples
+.env
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Frontend build / deps
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+
+# Local security tooling
+.venv-slither/
+slither-report.*
+
+# Indexer
+indexer/node_modules/
+indexer/data/
+indexer/.env
+indexer/dist/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.sw?
