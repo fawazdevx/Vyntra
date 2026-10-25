@@ -29,6 +29,19 @@ VITE_INDEXER_URL=http://127.0.0.1:8787
 
 ## Deploy on Vercel (second project)
 
+## Vercel project settings (required)
+
+| Setting | Value |
+|---------|--------|
+| Root Directory | `indexer` |
+| Framework Preset | Other |
+| Build Command | `npm run vercel-build` |
+| Install Command | `npm install` |
+| Output | (leave default for serverless `api/`) |
+
+After deploy, `/api/health` must return JSON in under 1s. If it still times out, the Root Directory is probably the repo root instead of `indexer`.
+
+
 ### 1. Create a Turso database
 
 ```bash
