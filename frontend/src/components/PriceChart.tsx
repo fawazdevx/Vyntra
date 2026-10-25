@@ -18,6 +18,8 @@ import {
   type AutoscaleInfoProvider,
 } from 'lightweight-charts'
 import type { TradePoint } from '../hooks/useTradeHistory'
+import { BotUsd } from './BotUsd'
+import { botTestnet } from '../lib/chains'
 
 
 function chartTheme(mode: 'light' | 'dark') {
@@ -70,6 +72,9 @@ type Props = {
   spotMcap?: number
   height?: number
   defaultInterval?: string
+  loading?: boolean
+  error?: boolean
+  onRetry?: () => void
 }
 
 type CandleBucket = {
@@ -79,7 +84,13 @@ type CandleBucket = {
   low: number
   close: number
   volume: number
+  trades: number
 }
+
+type ChartMetric = 'mcap' | 'price'
+type ChartStyle = 'auto' | 'candles' | 'line'
+
+const TOTAL_SUPPLY = 1_000_000_000
 
 /**
  * Target pixel width per bar — DexScreener / pump keep these thin.
@@ -115,6 +126,33 @@ function formatMcap(price: number) {
   return price.toFixed(6)
 }
 
+function formatBotValue(value: number) {
+  if (!Number.isFinite(value)) return '—'
+  if (value === 0) return '0'
+  const abs = Math.abs(value)
+  if (abs >= 1_000) {
+    return new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: 2,
+    }).format(value)
+  }
+  const decimals = Math.min(12, Math.max(3, Math.ceil(-Math.log10(abs)) + 2))
+  return value.toFixed(decimals).replace(/\.?0+$/, '')
+}
+
+function formatChartValue(value: number, metric: ChartMetric) {
+  return metric === 'mcap' ? formatMcap(value) : formatBotValue(value)
+}
+
+function formatChartTime(timestamp: number) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(timestamp * 1000))
+}
+
 function sanitizeCandle(c: CandleBucket): CandleBucket | null {
   if (!finitePositive(c.open) && !finitePositive(c.close)) return null
   const open = finitePositive(c.open) ? c.open : c.close
@@ -127,6 +165,7 @@ function sanitizeCandle(c: CandleBucket): CandleBucket | null {
     low: Math.min(c.low || open, open, close),
     close,
     volume: Number.isFinite(c.volume) && c.volume > 0 ? c.volume : 0,
+    trades: Number.isFinite(c.trades) && c.trades > 0 ? c.trades : 0,
   }
 }
 
@@ -146,12 +185,14 @@ function aggregateCandles(trades: TradePoint[], intervalSec: number): CandleBuck
         low: t.mcap,
         close: t.mcap,
         volume: vol,
+        trades: 1,
       })
     } else {
       existing.high = Math.max(existing.high, t.mcap)
       existing.low = Math.min(existing.low, t.mcap)
       existing.close = t.mcap
       existing.volume += vol
+      existing.trades += 1
     }
   }
 
@@ -200,7 +241,7 @@ function withSpot(points: SeriesPoint[], spotMcap: number | undefined, intervalS
   const nowBucket = floorBucket(Math.floor(Date.now() / 1000), intervalSec)
 
   if (points.length === 0) {
-    return [{ time: nowBucket, open: spot, high: spot, low: spot, close: spot, volume: 0 }]
+    return [{ time: nowBucket, open: spot, high: spot, low: spot, close: spot, volume: 0, trades: 0 }]
   }
 
   const out = points.map((p) => (isWhitespace(p) ? { ...p } : { ...p }))
@@ -238,6 +279,7 @@ function withSpot(points: SeriesPoint[], spotMcap: number | undefined, intervalS
       low: Math.min(prevClose, spot),
       close: spot,
       volume: 0,
+      trades: 0,
     })
   }
 
@@ -289,7 +331,15 @@ function applyVisibleRange(chart: IChartApi, barCount: number, widthPx: number) 
   ts.setVisibleLogicalRange({ from, to })
 }
 
-export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '5m' }: Props) {
+export function PriceChart({
+  trades,
+  spotMcap,
+  height = 420,
+  defaultInterval = '5m',
+  loading = false,
+  error = false,
+  onRetry,
+}: Props) {
   const { theme } = useTheme()
   const shellRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -298,10 +348,40 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
   const areaRef = useRef<ISeriesApi<'Area'> | null>(null)
   const volumeRef = useRef<ISeriesApi<'Histogram'> | null>(null)
   const barCountRef = useRef(0)
+  const candleLookupRef = useRef(new Map<number, CandleBucket>())
 
   const [intervalId, setIntervalId] = useState(defaultInterval)
   const interval = CHART_INTERVALS.find((i) => i.id === intervalId) ?? CHART_INTERVALS[1]
+  const [metric, setMetric] = useState<ChartMetric>('mcap')
+  const [chartStyle, setChartStyle] = useState<ChartStyle>('auto')
+  const [hoveredTime, setHoveredTime] = useState<number | null>(null)
   const [ready, setReady] = useState(false)
+  const metricRef = useRef(metric)
+  metricRef.current = metric
+
+  const marketStats = useMemo(() => {
+    const ordered = trades
+      .filter((trade) => Number.isFinite(trade.time) && finitePositive(trade.mcap))
+      .slice()
+      .sort((a, b) => a.time - b.time)
+    const currentMcap = finitePositive(spotMcap ?? 0) ? spotMcap! : ordered[ordered.length - 1]?.mcap
+    const cutoff = Math.floor(Date.now() / 1000) - 86_400
+    const recent = ordered.filter((trade) => trade.time >= cutoff)
+    const previous = ordered.filter((trade) => trade.time < cutoff).at(-1)
+    const referenceMcap = recent.length > 0 ? previous?.mcap ?? recent[0].mcap : undefined
+    const changePct =
+      finitePositive(currentMcap ?? 0) && finitePositive(referenceMcap ?? 0)
+        ? ((currentMcap! - referenceMcap!) / referenceMcap!) * 100
+        : undefined
+
+    return {
+      currentMcap: currentMcap ?? 0,
+      currentPrice: (currentMcap ?? 0) / TOTAL_SUPPLY,
+      changePct,
+      volumeBot: recent.reduce((sum, trade) => sum + (trade.amountBot > 0 ? trade.amountBot : 0), 0),
+      trades24h: recent.length,
+    }
+  }, [trades, spotMcap])
 
   const { points, realCandleCount } = useMemo(() => {
     const raw = aggregateCandles(trades, interval.seconds)
@@ -314,7 +394,11 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
   }, [trades, spotMcap, interval.seconds])
 
   const empty = realCandleCount === 0
-  const useArea = realCandleCount > 0 && realCandleCount < AREA_UNTIL_CANDLES
+  const noTradeHistory = trades.length === 0
+  const useArea =
+    chartStyle === 'line' ||
+    (chartStyle === 'auto' && realCandleCount > 0 && realCandleCount < AREA_UNTIL_CANDLES)
+  const hoveredCandle = hoveredTime == null ? null : candleLookupRef.current.get(hoveredTime) ?? null
 
   useEffect(() => {
     const el = containerRef.current
@@ -371,8 +455,8 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
 
     const priceFormat = {
       type: 'custom' as const,
-      minMove: 0.000001,
-      formatter: formatMcap,
+      minMove: 0.000000000001,
+      formatter: (value: number) => formatChartValue(value, metricRef.current),
     }
 
     const candles = chart.addSeries(CandlestickSeries, {
@@ -413,6 +497,11 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
     candleRef.current = candles
     areaRef.current = area
     volumeRef.current = volume
+
+    const handleCrosshairMove = (param: Parameters<typeof chart.subscribeCrosshairMove>[0] extends (arg: infer T) => void ? T : never) => {
+      setHoveredTime(typeof param.time === 'number' ? param.time : null)
+    }
+    chart.subscribeCrosshairMove(handleCrosshairMove)
     setReady(true)
 
     const ro = new ResizeObserver(() => {
@@ -432,6 +521,7 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
 
     return () => {
       ro.disconnect()
+      chart.unsubscribeCrosshairMove(handleCrosshairMove)
       chart.remove()
       chartRef.current = null
       candleRef.current = null
@@ -460,12 +550,29 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
       candleRef.current.setData([])
       areaRef.current.setData([])
       volumeRef.current.setData([])
+      candleLookupRef.current.clear()
       barCountRef.current = 0
       return
     }
 
     try {
-      const candleData: (CandlestickData | WhitespaceData)[] = points.map((p) => {
+      const displayValue = (value: number) => metric === 'mcap' ? value : value / TOTAL_SUPPLY
+      const chartPoints = points.map((p) =>
+        isWhitespace(p)
+          ? p
+          : {
+              ...p,
+              open: displayValue(p.open),
+              high: displayValue(p.high),
+              low: displayValue(p.low),
+              close: displayValue(p.close),
+            },
+      )
+      candleLookupRef.current = new Map(
+        points.filter((p): p is CandleBucket => !isWhitespace(p)).map((p) => [p.time, p]),
+      )
+
+      const candleData: (CandlestickData | WhitespaceData)[] = chartPoints.map((p) => {
         if (isWhitespace(p)) return { time: p.time as UTCTimestamp }
         return {
           time: p.time as UTCTimestamp,
@@ -476,7 +583,7 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
         }
       })
 
-      const areaData: (AreaData | WhitespaceData)[] = points.map((p) => {
+      const areaData: (AreaData | WhitespaceData)[] = chartPoints.map((p) => {
         if (isWhitespace(p)) return { time: p.time as UTCTimestamp }
         return {
           time: p.time as UTCTimestamp,
@@ -484,7 +591,7 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
         }
       })
 
-      const volumeData: (HistogramData | WhitespaceData)[] = points.map((p) => {
+      const volumeData: (HistogramData | WhitespaceData)[] = chartPoints.map((p) => {
         if (isWhitespace(p)) return { time: p.time as UTCTimestamp }
         return {
           time: p.time as UTCTimestamp,
@@ -506,62 +613,224 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
     } catch (err) {
       console.error('[PriceChart] failed to set series data', err)
     }
-  }, [points, interval.seconds, ready, useArea])
+  }, [points, interval.seconds, ready, useArea, metric])
+
+  const statusLabel = error ? 'Trade data issue' : loading ? 'Updating trades' : 'On-chain trades'
+  const emptyOverlay = loading && noTradeHistory
+    ? {
+        title: 'Loading chart data',
+        message: 'Fetching recent trades from the testnet.',
+      }
+    : error && noTradeHistory
+      ? {
+          title: 'Chart data unavailable',
+          message: 'Could not fetch testnet trades. Try loading them again.',
+        }
+      : !loading && !error && noTradeHistory
+        ? {
+            title: 'Waiting for the first trade',
+            message: 'Current BOT values are shown above. Price history starts when a trade is recorded.',
+          }
+        : empty
+          ? {
+              title: 'No chartable trades',
+              message: 'Trade history is available, but it does not contain valid price data yet.',
+            }
+          : null
+
+  const metricLabel = metric === 'mcap' ? 'Market cap · BOT' : 'Token price · BOT / token'
 
   return (
     <div
       ref={shellRef}
       className="relative w-full overflow-hidden rounded-xl border border-[var(--vyntra-border)] bg-[var(--vyntra-card)]"
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--vyntra-border)] px-4 py-2.5 sm:px-5">
-        <div className="flex items-center gap-3">
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--vyntra-muted)]">
-            Market cap
-          </span>
-          <span className="hidden items-center gap-1.5 font-mono text-[11px] text-[var(--vyntra-success)] sm:inline-flex">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--vyntra-success)]" />
-            Live
-          </span>
-          {useArea && (
-            <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-600">
-              Early chart
+      <div className="space-y-3 border-b border-[var(--vyntra-border)] px-3 py-3 sm:px-5">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--vyntra-muted)]">
+              {metricLabel}
             </span>
-          )}
-        </div>
-        <div
-          className="flex flex-wrap items-center gap-0.5 rounded-md border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-0.5"
-          role="tablist"
-          aria-label="Chart interval"
-        >
-          {CHART_INTERVALS.map((opt) => {
-            const active = opt.id === interval.id
-            return (
+            <span className="rounded border border-amber-400/25 bg-amber-400/[0.08] px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+              {botTestnet.name}
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded border border-[var(--vyntra-border)] px-2 py-1 font-mono text-[10px] text-[var(--vyntra-muted)]">
+              <span className={`h-1.5 w-1.5 rounded-full ${error ? 'bg-rose-400' : loading ? 'animate-pulse bg-amber-300' : 'bg-[var(--vyntra-success)]'}`} />
+              {statusLabel}
+            </span>
+            {chartStyle === 'auto' && useArea && (
+              <span className="rounded border border-[var(--vyntra-border)] px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-[var(--vyntra-faint)]">
+                Early chart
+              </span>
+            )}
+            {error && trades.length > 0 && onRetry && (
               <button
-                key={opt.id}
                 type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setIntervalId(opt.id)}
-                className={`min-w-[2.4rem] rounded px-2 py-1 font-mono text-xs font-semibold tabular-nums transition ${
-                  active
-                    ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-bg)]'
-                    : 'text-[var(--vyntra-muted)] hover:bg-[var(--vyntra-elev)] hover:text-[var(--vyntra-fg)]'
-                }`}
+                onClick={onRetry}
+                className="font-mono text-[10px] font-semibold text-rose-300 underline decoration-rose-300/40 underline-offset-2 hover:text-rose-200"
               >
-                {opt.label}
+                Retry update
               </button>
-            )
-          })}
+            )}
+          </div>
+
+          <div
+            className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-md border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-0.5"
+            role="tablist"
+            aria-label="Chart interval"
+          >
+            {CHART_INTERVALS.map((opt) => {
+              const active = opt.id === interval.id
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setIntervalId(opt.id)}
+                  className={`min-w-[2.4rem] shrink-0 rounded px-2 py-1.5 font-mono text-xs font-semibold tabular-nums transition ${
+                    active
+                      ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-bg)]'
+                      : 'text-[var(--vyntra-muted)] hover:bg-[var(--vyntra-elev)] hover:text-[var(--vyntra-fg)]'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex rounded-md border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-0.5" role="tablist" aria-label="Chart metric">
+              {([
+                ['mcap', 'Market cap'],
+                ['price', 'Token price'],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={metric === id}
+                  onClick={() => setMetric(id)}
+                  className={`rounded px-2.5 py-1.5 font-mono text-[10px] font-semibold transition ${
+                    metric === id
+                      ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-bg)]'
+                      : 'text-[var(--vyntra-muted)] hover:text-[var(--vyntra-fg)]'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="inline-flex rounded-md border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-0.5" role="tablist" aria-label="Chart style">
+              {([
+                ['auto', 'Auto'],
+                ['candles', 'Candles'],
+                ['line', 'Line'],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={chartStyle === id}
+                  onClick={() => setChartStyle(id)}
+                  className={`rounded px-2.5 py-1.5 font-mono text-[10px] font-semibold transition ${
+                    chartStyle === id
+                      ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-bg)]'
+                      : 'text-[var(--vyntra-muted)] hover:text-[var(--vyntra-fg)]'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-[10px] leading-4 text-[var(--vyntra-faint)]">
+            USD is an estimate using the mainnet BOT reference price; testnet BOT has no market-set dollar value.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 divide-x divide-y divide-[var(--vyntra-border)] sm:grid-cols-3 xl:grid-cols-5 xl:divide-y-0">
+        <div className="min-w-0 px-3 py-3 sm:px-4">
+          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">Market cap</p>
+          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.currentMcap > 0 ? `${formatBotValue(marketStats.currentMcap)} BOT` : '—'}</p>
+          {marketStats.currentMcap > 0 && <BotUsd value={marketStats.currentMcap} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />}
+        </div>
+        <div className="min-w-0 px-3 py-3 sm:px-4">
+          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">Token price</p>
+          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.currentPrice > 0 ? `${formatBotValue(marketStats.currentPrice)} BOT` : '—'}</p>
+          {marketStats.currentPrice > 0 && <BotUsd value={marketStats.currentPrice} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />}
+        </div>
+        <div className="min-w-0 px-3 py-3 sm:px-4">
+          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">24h change</p>
+          <p className={`mt-1 truncate font-mono text-xs font-semibold ${marketStats.changePct == null ? 'text-[var(--vyntra-muted)]' : marketStats.changePct >= 0 ? 'text-[var(--vyntra-success)]' : 'text-rose-400'}`}>
+            {marketStats.changePct == null ? '—' : `${marketStats.changePct >= 0 ? '+' : ''}${marketStats.changePct.toFixed(2)}%`}
+          </p>
+          <p className="mt-1 text-[10px] text-[var(--vyntra-faint)]">From recorded trades</p>
+        </div>
+        <div className="min-w-0 px-3 py-3 sm:px-4">
+          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">24h volume</p>
+          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{formatBotValue(marketStats.volumeBot)} BOT</p>
+          <BotUsd value={marketStats.volumeBot} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />
+        </div>
+        <div className="min-w-0 px-3 py-3 sm:px-4">
+          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">24h trades</p>
+          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.trades24h.toLocaleString()}</p>
+          <p className="mt-1 text-[10px] text-[var(--vyntra-faint)]">On BOT Chain Testnet</p>
         </div>
       </div>
 
       <div className="relative w-full" style={{ height }}>
         <div ref={containerRef} className="absolute inset-0" />
-        {empty && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_srgb,var(--vyntra-card)_95%,transparent)]">
-            <div className="text-center">
-              <p className="font-mono text-xs uppercase tracking-[0.18em] text-[var(--vyntra-faint)]">No trades yet</p>
-              <p className="mt-2 text-sm text-[var(--vyntra-muted)]">Chart appears after the first buy</p>
+        {hoveredCandle && (
+          <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100%-1.5rem)] rounded-lg border border-[var(--vyntra-border)] bg-[color-mix(in_srgb,var(--vyntra-card)_94%,transparent)] px-3 py-2 shadow-lg backdrop-blur-sm">
+            <p className="mb-2 font-mono text-[9px] uppercase tracking-wide text-[var(--vyntra-faint)]">
+              {formatChartTime(hoveredCandle.time)} · {hoveredCandle.trades} trades
+            </p>
+            <div className="grid grid-cols-3 gap-x-3 gap-y-2 sm:grid-cols-6">
+              {([
+                ['O', hoveredCandle.open],
+                ['H', hoveredCandle.high],
+                ['L', hoveredCandle.low],
+                ['C', hoveredCandle.close],
+              ] as const).map(([label, rawValue]) => (
+                <div key={label}>
+                  <p className="font-mono text-[9px] text-[var(--vyntra-faint)]">{label}</p>
+                  <p className="font-mono text-[10px] font-semibold text-[var(--vyntra-fg)]">
+                    {formatChartValue(metric === 'mcap' ? rawValue : rawValue / TOTAL_SUPPLY, metric)}
+                  </p>
+                </div>
+              ))}
+              <div>
+                <p className="font-mono text-[9px] text-[var(--vyntra-faint)]">VOL</p>
+                <p className="font-mono text-[10px] font-semibold text-[var(--vyntra-fg)]">{formatBotValue(hoveredCandle.volume)} BOT</p>
+                <BotUsd value={hoveredCandle.volume} className="font-mono text-[9px] text-[var(--vyntra-faint)]" />
+              </div>
+              <div>
+                <p className="font-mono text-[9px] text-[var(--vyntra-faint)]">UNIT</p>
+                <p className="font-mono text-[10px] font-semibold text-[var(--vyntra-fg)]">{metric === 'mcap' ? 'BOT mcap' : 'BOT / token'}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {emptyOverlay && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-[color-mix(in_srgb,var(--vyntra-card)_88%,transparent)] px-4 text-center backdrop-blur-[1px]">
+            <div className="max-w-sm">
+              {(loading && noTradeHistory) && <span className="mx-auto mb-3 block h-5 w-5 animate-spin rounded-full border-2 border-[var(--vyntra-border)] border-t-[var(--vyntra-fg)]" />}
+              <p className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-[var(--vyntra-fg)]">{emptyOverlay.title}</p>
+              <p className="mt-2 text-xs leading-5 text-[var(--vyntra-muted)]">{emptyOverlay.message}</p>
+              {error && noTradeHistory && onRetry && (
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="pointer-events-auto mt-4 rounded-md border border-[var(--vyntra-border)] px-3 py-2 font-mono text-xs font-semibold text-[var(--vyntra-fg)] transition hover:bg-[var(--vyntra-elev)]"
+                >
+                  Retry loading chart
+                </button>
+              )}
             </div>
           </div>
         )}

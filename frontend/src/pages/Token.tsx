@@ -22,6 +22,7 @@ import { TradeTape } from '../components/TradeTape'
 import { HoldersPanel } from '../components/HoldersPanel'
 import { ReplyThread } from '../components/ReplyThread'
 import { ShareCard } from '../components/ShareCard'
+import { BotUsd } from '../components/BotUsd'
 import {
   BDEX_URL,
   explorerAddress,
@@ -63,7 +64,12 @@ export function Token() {
   const [msg, setMsg] = useState<string | null>(null)
 
   const { data: launch, isLoading, isError, error, refetch } = useLaunch(id)
-  const { data: trades = [], isLoading: tradesLoading } = useTradeHistory(
+  const {
+    data: trades = [],
+    isLoading: tradesLoading,
+    isError: tradesError,
+    refetch: refetchTrades,
+  } = useTradeHistory(
     launch?.curve,
     launch?.id,
   )
@@ -378,20 +384,27 @@ export function Token() {
 
         <div className="flex flex-wrap gap-7 sm:gap-10">
           <Metric
-            label="Market cap"
+            label="Market cap / FDV"
             value={`${formatBot(spot?.mcap ?? lastTrade?.mcap ?? 0)} BOT`}
             sub={
-              changePct !== 0 ? (
-                <span className={changePct >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                  {changePct >= 0 ? '+' : ''}
-                  {changePct.toFixed(2)}%
-                </span>
-              ) : (
-                <span className="text-zinc-600">—</span>
-              )
+              <div className="mt-1 space-y-1">
+                <BotUsd value={spot?.mcap ?? lastTrade?.mcap ?? 0} className="text-xs text-zinc-400" />
+                {changePct !== 0 ? (
+                  <span className={changePct >= 0 ? 'block text-emerald-400' : 'block text-rose-400'}>
+                    {changePct >= 0 ? '+' : ''}
+                    {changePct.toFixed(2)}%
+                  </span>
+                ) : (
+                  <span className="block text-zinc-600">—</span>
+                )}
+              </div>
             }
           />
-          <Metric label="Raised" value={`${formatBot(launch.raisedBot)} BOT`} />
+          <Metric
+            label="Raised"
+            value={`${formatBot(launch.raisedBot)} BOT`}
+            sub={<BotUsd value={launch.raisedBot} className="text-xs text-zinc-400" />}
+          />
           <Metric label="Trades" value={String(trades.length)} />
           <Metric
             label="Token"
@@ -413,12 +426,15 @@ export function Token() {
 
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <div className="space-y-5">
-          <PriceChart trades={trades} spotMcap={spot?.mcap} height={420} />
-          {tradesLoading && trades.length === 0 ? (
-            <div className="card px-4 py-10 text-center text-base text-[var(--vyntra-muted)]">
-              Loading trade history…
-            </div>
-          ) : (
+          <PriceChart
+            trades={trades}
+            spotMcap={spot?.mcap}
+            height={420}
+            loading={tradesLoading}
+            error={tradesError}
+            onRetry={() => void refetchTrades()}
+          />
+          {!tradesLoading && !(tradesError && trades.length === 0) && (
             <TradeTape trades={trades} symbol={launch.symbol} />
           )}
           <HoldersPanel launchId={launch.id} symbol={launch.symbol} />
@@ -528,6 +544,12 @@ export function Token() {
                   {side === 'buy'
                     ? `Bal ${formatBot(botBalance?.value ?? 0n)} BOT`
                     : `Bal ${formatBot(tokenBalance ?? 0n)} $${launch.symbol}`}
+                  {side === 'buy' && (
+                    <BotUsd
+                      value={Number(formatEther(botBalance?.value ?? 0n))}
+                      className="block text-right text-[11px] font-normal text-zinc-500"
+                    />
+                  )}
                 </span>
               </div>
               <input
@@ -539,6 +561,7 @@ export function Token() {
                 value={amount}
                 onChange={(e) => onAmountChange(e.target.value)}
               />
+              {side === 'buy' && <BotUsd value={Number(amount) || 0} className="text-xs text-zinc-500" />}
             </label>
 
             <div className="mt-3 grid grid-cols-4 gap-2">
@@ -564,13 +587,21 @@ export function Token() {
                 />
               )}
               {hasTax && memeTaxWei > 0n && (
-                <Row label="Tax amount" value={`${formatBot(memeTaxWei)} BOT`} mono />
+                <Row
+                  label="Tax amount"
+                  value={<span>{formatBot(memeTaxWei)} BOT<BotUsd value={Number(formatEther(memeTaxWei))} /></span>}
+                  mono
+                />
               )}
               {side === 'buy' && buyQuote ? (
                 <Row label="You receive" value={`~${formatBot(buyQuote[0])} $${launch.symbol}`} mono />
               ) : null}
               {side === 'sell' && sellQuote ? (
-                <Row label="You receive" value={`~${formatBot(sellQuote[0])} BOT`} mono />
+                <Row
+                  label="You receive"
+                  value={<span>~{formatBot(sellQuote[0])} BOT<BotUsd value={Number(formatEther(sellQuote[0]))} /></span>}
+                  mono
+                />
               ) : null}
               <Row label="Progress" value={`${progress.toFixed(1)}%`} />
             </div>
@@ -670,7 +701,7 @@ function Metric({
   )
 }
 
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Row({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
   return (
     <div className="flex justify-between gap-3">
       <span className="text-zinc-500">{label}</span>

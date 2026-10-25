@@ -5,6 +5,7 @@ HTTP API + chain sync for launches, trades, OHLCV, replies, holders/snipers, and
 Storage is **libSQL** (local `file:` DB or **Turso** in production). The same codebase runs:
 
 - locally (`npm run dev` — API + poll loop)
+- on **Render** (`npm start` — always-on API + poll loop)
 - on **Vercel** (serverless API + Cron / stale-on-request sync)
 
 ## Local
@@ -26,6 +27,29 @@ Frontend:
 ```env
 VITE_INDEXER_URL=http://127.0.0.1:8787
 ```
+
+## Deploy the API and worker together on Render
+
+Render is the recommended production host when continuous background syncing is needed. The web service runs the API and poll loop in one process, while the frontend can stay on Vercel.
+
+1. In Render, create a Blueprint for this repository and set **Blueprint Path** to `indexer/render.yaml`.
+2. Choose a paid, always-on web service plan. Free web services can spin down while idle, which stops the polling loop.
+3. Set the required variables prompted by the Blueprint:
+
+   | Name | Value |
+   |------|-------|
+   | `FACTORY_ADDRESS` | Mainnet VyntraFactory address |
+   | `INDEXER_CHAIN_ID` | `677` for BOT Chain mainnet |
+   | `INDEXER_RPC_URL` | Mainnet RPC URL |
+   | `INDEXER_START_BLOCK` | Block where the mainnet factory is deployed |
+   | `TURSO_DATABASE_URL` | Production Turso URL |
+   | `TURSO_AUTH_TOKEN` | Production Turso token |
+
+4. After deploy, check `https://<render-service>.onrender.com/health` and confirm `ready` is `true` and `chainId` is `677`.
+5. On the **frontend** Vercel project, set `VITE_INDEXER_URL` to `https://<render-service>.onrender.com` and redeploy the frontend.
+6. Once the frontend uses Render, retire the old Vercel **indexer** project so only the Render process is syncing the shared database. Keep the frontend Vercel project.
+
+Do not set `INDEXER_START_BLOCK` to `0` on a fresh mainnet database unless a full historical scan is intended. Keep the existing Turso database only if it contains data for the same chain and factory; otherwise use a separate mainnet database.
 
 ## Deploy on Vercel (second project)
 
@@ -111,6 +135,7 @@ On Hobby you do **not** need Pro for a working indexer — request traffic drive
 | Method | Path | Description |
 | --- | --- | --- |
 | GET | `/health` | Sync status + config |
+| GET | `/v1/bot-usd` | Cached BOT Chain mainnet WBOT/USD reference price |
 | GET | `/cron/sync` | Force sync (Bearer `CRON_SECRET` if set) |
 | GET | `/v1/stats` | Aggregate market stats |
 | GET | `/v1/launches?sort=trending\|new\|volume` | Launch list |

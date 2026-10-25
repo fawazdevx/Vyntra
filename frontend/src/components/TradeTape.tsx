@@ -1,6 +1,7 @@
 import { explorerTx, formatBot, shortAddr } from '../lib/config'
 import type { TradePoint } from '../hooks/useTradeHistory'
 import { botTestnet } from '../lib/chains'
+import { BotUsd } from './BotUsd'
 
 type Props = {
   trades: TradePoint[]
@@ -46,9 +47,15 @@ export function TradeTape({ trades, symbol }: Props) {
                   >
                     {t.side}
                   </td>
-                  <td className="px-2 py-3 font-mono text-zinc-200">{formatBot(t.amountBot)}</td>
+                  <td className="px-2 py-3 font-mono text-zinc-200">
+                    {formatBot(t.amountBot)}
+                    <BotUsd value={t.amountBot} className="block text-[10px] font-normal text-zinc-500" />
+                  </td>
                   <td className="px-2 py-3 font-mono text-zinc-400">{formatBot(t.amountToken)}</td>
-                  <td className="px-2 py-3 font-mono text-zinc-400">{formatBot(t.mcap)}</td>
+                  <td className="px-2 py-3 font-mono text-zinc-400">
+                    {formatBot(t.mcap)}
+                    <BotUsd value={t.mcap} className="block text-[10px] font-normal text-zinc-500" />
+                  </td>
                   <td className="px-4 py-3 text-right sm:px-5">
                     <a
                       href={explorerTx(t.txHash, botTestnet.id)}

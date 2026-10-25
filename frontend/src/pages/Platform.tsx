@@ -31,6 +31,7 @@ import {
 } from '../lib/config'
 import { formatUserError } from '../lib/errors'
 import { usePlatformTrades } from '../hooks/usePlatformTrades'
+import { BotUsd } from '../components/BotUsd'
 
 const PCTS = [25, 50, 75, 100] as const
 const TOTAL_SUPPLY = 1_000_000_000
@@ -68,6 +69,7 @@ export function Platform() {
   const {
     data: trades = [],
     isLoading: tradesLoading,
+    isError: tradesError,
     refetch: refetchTrades,
   } = usePlatformTrades(VYNTRA_MARKET)
 
@@ -303,11 +305,20 @@ export function Platform() {
           </div>
         </div>
         <div className="flex flex-wrap gap-7 sm:gap-10">
-          <Metric label="Market cap" value={`${formatBot(spotMcap)} BOT`} />
-          <Metric label="Spot" value={price > 0 ? `${formatBot(price)} BOT` : '—'} />
+          <Metric
+            label="Market cap / FDV"
+            value={`${formatBot(spotMcap)} BOT`}
+            sub={<BotUsd value={spotMcap} />}
+          />
+          <Metric
+            label="Spot"
+            value={price > 0 ? `${formatBot(price)} BOT` : '—'}
+            sub={price > 0 ? <BotUsd value={price} /> : null}
+          />
           <Metric
             label="Pool BOT"
             value={reserveBot != null ? formatBot(reserveBot) : '—'}
+            sub={reserveBot != null ? <BotUsd value={Number(formatEther(reserveBot))} /> : null}
           />
           <Metric label="Trades" value={String(trades.length)} />
           <Metric
@@ -328,12 +339,15 @@ export function Platform() {
 
       <div className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <div className="space-y-5">
-          <PriceChart trades={trades} spotMcap={spotMcap} height={420} />
-          {tradesLoading && trades.length === 0 ? (
-            <div className="card px-4 py-10 text-center text-base text-[var(--vyntra-muted)]">
-              Loading trade history…
-            </div>
-          ) : (
+          <PriceChart
+            trades={trades}
+            spotMcap={spotMcap}
+            height={420}
+            loading={tradesLoading}
+            error={tradesError}
+            onRetry={() => void refetchTrades()}
+          />
+          {!tradesLoading && !(tradesError && trades.length === 0) && (
             <TradeTape trades={trades} symbol="VYNTRA" />
           )}
           <HoldersPanel symbol="VYNTRA" trades={trades} />
@@ -393,6 +407,12 @@ export function Platform() {
                 {side === 'buy'
                   ? `Bal ${formatBot(botBalance?.value ?? 0n)} BOT`
                   : `Bal ${formatBot(tokenBalance ?? 0n)} VYNTRA`}
+                {side === 'buy' && (
+                  <BotUsd
+                    value={Number(formatEther(botBalance?.value ?? 0n))}
+                    className="block text-right text-[11px] font-normal text-[var(--vyntra-faint)]"
+                  />
+                )}
               </span>
             </div>
             <input
@@ -404,6 +424,7 @@ export function Platform() {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
+            {side === 'buy' && <BotUsd value={Number(amount) || 0} className="text-xs text-[var(--vyntra-faint)]" />}
           </label>
 
           <div className="mt-3 grid grid-cols-4 gap-2">
@@ -425,7 +446,11 @@ export function Platform() {
               <Row label="You receive" value={`~${formatBot(buyQuote)} $VYNTRA`} mono />
             ) : null}
             {side === 'sell' && sellQuote != null ? (
-              <Row label="You receive" value={`~${formatBot(sellQuote)} BOT`} mono />
+              <Row
+                label="You receive"
+                value={<span>~{formatBot(sellQuote)} BOT<BotUsd value={Number(formatEther(sellQuote))} /></span>}
+                mono
+              />
             ) : null}
             <Row label="Slippage guard" value="5%" />
           </div>
@@ -488,18 +513,19 @@ export function Platform() {
   )
 }
 
-function Metric({ label, value }: { label: string; value: ReactNode }) {
+function Metric({ label, value, sub }: { label: string; value: ReactNode; sub?: ReactNode }) {
   return (
     <div>
       <div className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--vyntra-faint)]">
         {label}
       </div>
       <div className="mt-1.5 font-display text-xl font-bold tracking-tight sm:text-2xl">{value}</div>
+      {sub && <div className="mt-1 text-xs">{sub}</div>}
     </div>
   )
 }
 
-function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Row({ label, value, mono }: { label: string; value: ReactNode; mono?: boolean }) {
   return (
     <div className="flex justify-between gap-3">
       <span className="text-[var(--vyntra-muted)]">{label}</span>

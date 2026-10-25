@@ -16,6 +16,7 @@ import { spawnFactoryAbi } from '../lib/abis'
 import { botTestnet } from '../lib/chains'
 import { explorerTx, FACTORY_ADDRESS } from '../lib/config'
 import { formatUserError } from '../lib/errors'
+import { BotUsd } from '../components/BotUsd'
 
 const TAX_PRESETS = [
   { label: 'Off', buy: 0, sell: 0 },
@@ -275,6 +276,7 @@ export function Spawn() {
               value={seedBuy}
               onChange={(e) => setSeedBuy(e.target.value)}
             />
+            <BotUsd value={Number(seedBuy) || 0} className="text-xs text-[var(--vyntra-faint)]" />
             <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[var(--vyntra-faint)]">
               <Info className="mt-0.5 h-3 w-3 shrink-0" />
               Optional first buy in the same tx. Only the creator can buy on the launch block.

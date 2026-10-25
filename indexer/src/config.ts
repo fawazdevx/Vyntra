@@ -41,7 +41,7 @@ export const hasRemoteDatabase = Boolean(
   DATABASE_URL && !DATABASE_URL.startsWith('file:'),
 )
 
-export const API_PORT = Number(process.env.INDEXER_API_PORT || 8787)
+export const API_PORT = Number(process.env.INDEXER_API_PORT || process.env.PORT || 8787)
 export const POLL_MS = Number(process.env.INDEXER_POLL_MS || 8_000)
 export const CONFIRMATIONS = Number(process.env.INDEXER_CONFIRMATIONS || 1)
 export const LOG_CHUNK = Number(process.env.INDEXER_LOG_CHUNK || 2_000)

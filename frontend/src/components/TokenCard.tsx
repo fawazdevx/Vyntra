@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { Star } from 'lucide-react'
 import { formatBot, shortAddr, type LaunchView } from '../lib/config'
 import { useWatchlist } from '../hooks/useWatchlist'
+import { BotUsd } from './BotUsd'
 
 type Props = {
   launch: LaunchView
@@ -78,8 +79,9 @@ export function TokenCard({ launch }: Props) {
                   ? 'Graduated'
                   : `${progress.toFixed(0)}% to graduate`}
             </span>
-            <span className="font-mono text-base text-[var(--vyntra-fg)]">
+            <span className="text-right font-mono text-base text-[var(--vyntra-fg)]">
               {formatBot(launch.raisedBot)} BOT
+              <BotUsd value={launch.raisedBot} />
             </span>
           </div>
           <div className="progress-track">

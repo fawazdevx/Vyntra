@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "tsc",
+    "start": "node dist/src/main.js",
     "dev": "tsx src/main.ts",
     "sync": "tsx src/worker.ts --once",
     "worker": "tsx src/worker.ts",

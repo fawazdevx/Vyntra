@@ -13,6 +13,7 @@ import { ensureSchema, getMeta, queryAll, queryOne, type LaunchRow, type TradeRo
 import { buildOhlcv } from './ohlcv.js'
 import { getHolders, getSnipers } from './analytics.js'
 import { getPortfolio, getWalletTrades } from './portfolio.js'
+import { getBotUsdPrice } from './bot-price.js'
 
 function launchJson(row: LaunchRow) {
   return {
@@ -85,6 +86,20 @@ export function createApp(opts: { basePath?: string } = {}) {
       ready: Boolean(FACTORY_ADDRESS),
     }),
   )
+
+  app.get('/v1/bot-usd', async (c) => {
+    try {
+      const price = await getBotUsdPrice()
+      c.header('Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=300')
+      return c.json(price)
+    } catch (error) {
+      c.header('Cache-Control', 'no-store')
+      return c.json(
+        { error: 'bot_price_unavailable', detail: error instanceof Error ? error.message : String(error) },
+        503,
+      )
+    }
+  })
 
   app.use('/v1/*', async (c, next) => {
     try {

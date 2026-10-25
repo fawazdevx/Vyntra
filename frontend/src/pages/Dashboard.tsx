@@ -16,6 +16,7 @@ import { useCreatorLaunches } from '../hooks/useLaunches'
 import { explorerTx, formatBot, shortAddr, type LaunchView } from '../lib/config'
 import { formatUserError } from '../lib/errors'
 import { KeeperPanel } from '../components/KeeperPanel'
+import { BotUsd } from '../components/BotUsd'
 import { zeroAddress } from 'viem'
 
 type ClaimKind = 'fees' | 'funds' | 'buyback' | 'dividends' | 'liquidity'
@@ -182,6 +183,7 @@ export function Dashboard() {
           icon={TrendingUp}
           label="Claimable fees"
           value={isConnected ? `${formatBot(totalFeesEst)} BOT` : '—'}
+          sub={isConnected ? <BotUsd value={totalFeesEst} /> : null}
           mono
         />
         <Stat icon={Wallet} label="Wallet" value={isConnected ? shortAddr(address) : 'Not connected'} />
@@ -245,9 +247,11 @@ export function Dashboard() {
                           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-[var(--vyntra-faint)]">
                             <span className="font-mono text-[var(--vyntra-muted)]">
                               {formatBot(l.raisedBot)} BOT raised
+                              <BotUsd value={l.raisedBot} className="ml-1 inline text-[11px] font-normal" />
                             </span>
                             <span className="font-mono text-[var(--vyntra-success)]">
                               {formatBot(fees)} BOT fees
+                              <BotUsd value={fees} className="ml-1 inline text-[11px] font-normal" />
                             </span>
                             <span>
                               {l.graduated ? 'Graduated' : `${progress.toFixed(0)}% to graduate`}
@@ -383,6 +387,7 @@ function TaxBucket({
       <div>
         <div className="label">{label}</div>
         <div className="mt-0.5 font-mono text-sm">{formatBot(n)} BOT</div>
+        <BotUsd value={n} />
       </div>
       <button
         type="button"
@@ -401,11 +406,13 @@ function Stat({
   label,
   value,
   mono,
+  sub,
 }: {
   icon: typeof Wallet
   label: string
   value: string
   mono?: boolean
+  sub?: React.ReactNode
 }) {
   return (
     <div className="card p-5 sm:p-6">
@@ -418,6 +425,7 @@ function Stat({
       >
         {value}
       </div>
+      {sub}
     </div>
   )
 }

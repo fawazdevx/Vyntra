@@ -4,6 +4,7 @@ import { useAccount } from 'wagmi'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Briefcase, ExternalLink } from 'lucide-react'
 import { botTestnet } from '../lib/chains'
+import { BotUsd } from '../components/BotUsd'
 import { explorerTx, formatBot, shortAddr } from '../lib/config'
 import {
   fetchPortfolioFromIndexer,
@@ -148,15 +149,21 @@ export function Portfolio() {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metric label="Open" value={String(s?.openCount ?? '—')} />
-        <Metric label="Held value" value={s ? `${formatBot(s.heldValueBot)} BOT` : '—'} />
+        <Metric
+          label="Held value"
+          value={s ? `${formatBot(s.heldValueBot)} BOT` : '—'}
+          sub={s ? <BotUsd value={s.heldValueBot} /> : null}
+        />
         <Metric
           label="Realized"
           value={s ? `${fmtSigned(s.realizedPnlBot)} BOT` : '—'}
+          sub={s ? <BotUsd value={s.realizedPnlBot} /> : null}
           valueClass={s ? pnlClass(s.realizedPnlBot) : undefined}
         />
         <Metric
           label="Total PnL"
           value={s ? `${fmtSigned(s.totalPnlBot)} BOT` : '—'}
+          sub={s ? <BotUsd value={s.totalPnlBot} /> : null}
           valueClass={s ? pnlClass(s.totalPnlBot) : undefined}
         />
       </div>
@@ -237,7 +244,10 @@ export function Portfolio() {
                       >
                         {t.side}
                       </td>
-                      <td className="px-2 py-3 font-mono">{formatBot(t.botAmount)}</td>
+                      <td className="px-2 py-3 font-mono">
+                        {formatBot(t.botAmount)}
+                        <BotUsd value={t.botAmount} />
+                      </td>
                       <td className="px-4 py-3 text-right sm:px-5">
                         <a
                           href={explorerTx(t.txHash, botTestnet.id)}
@@ -265,10 +275,12 @@ function Metric({
   label,
   value,
   valueClass,
+  sub,
 }: {
   label: string
   value: string
   valueClass?: string
+  sub?: React.ReactNode
 }) {
   return (
     <div className="card px-4 py-4">
@@ -278,6 +290,7 @@ function Metric({
       <div className={`mt-1.5 font-display text-xl font-bold tracking-tight ${valueClass ?? ''}`}>
         {value}
       </div>
+      {sub}
     </div>
   )
 }
@@ -334,15 +347,19 @@ function PositionTable({
                   <td className="px-2 py-3 font-mono">{fmtTokens(p.heldToken)}</td>
                   <td className="px-2 py-3 font-mono text-[var(--vyntra-muted)]">
                     {formatBot(p.avgCostBot)}
+                    <BotUsd value={p.avgCostBot} />
                   </td>
                   <td className="px-2 py-3 font-mono text-[var(--vyntra-muted)]">
                     {formatBot(p.lastPrice)}
+                    <BotUsd value={p.lastPrice} />
                   </td>
                   <td className={`px-2 py-3 font-mono ${pnlClass(p.realizedPnlBot)}`}>
                     {fmtSigned(p.realizedPnlBot)}
+                    <BotUsd value={p.realizedPnlBot} />
                   </td>
                   <td className={`px-4 py-3 text-right font-mono sm:px-5 ${pnlClass(p.totalPnlBot)}`}>
                     {fmtSigned(p.totalPnlBot)} BOT
+                    <BotUsd value={p.totalPnlBot} />
                   </td>
                 </tr>
               ))}

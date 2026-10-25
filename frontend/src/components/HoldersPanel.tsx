@@ -10,6 +10,7 @@ import {
 } from '../lib/indexer'
 import { holdersFromTrades, snipersFromTrades } from '../lib/holdersFromTrades'
 import type { TradePoint } from '../hooks/useTradeHistory'
+import { BotUsd } from './BotUsd'
 
 type Props = {
   symbol: string
@@ -220,6 +221,7 @@ export function HoldersPanel({ launchId, symbol, trades }: Props) {
                 Spent{' '}
                 <span className="font-mono text-[var(--vyntra-fg)]">
                   {formatBot(sniperSummary.totalSpentBot)}
+                  <BotUsd value={sniperSummary.totalSpentBot} className="ml-1 inline text-[11px] font-normal text-[var(--vyntra-faint)]" />
                 </span>{' '}
                 BOT
               </span>
@@ -282,6 +284,7 @@ export function HoldersPanel({ launchId, symbol, trades }: Props) {
                       </td>
                       <td className="px-4 py-3 text-right font-mono sm:px-5">
                         {formatBot(s.spentBot)}
+                        <BotUsd value={s.spentBot} />
                       </td>
                     </tr>
                   ))}

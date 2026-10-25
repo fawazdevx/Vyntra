@@ -4,6 +4,7 @@ import { formatEther } from 'viem'
 import { Sparkles, ArrowUpRight } from 'lucide-react'
 import { vyntraMarketAbi } from '../lib/abis'
 import { formatBot, VYNTRA_LOGO, VYNTRA_MARKET, VYNTRA_TOKEN } from '../lib/config'
+import { BotUsd } from './BotUsd'
 
 /** Pinned first on Markets — platform token entry point. */
 export function PlatformTokenCard() {
@@ -60,22 +61,25 @@ export function PlatformTokenCard() {
 
         <div className="flex flex-wrap items-end gap-6 sm:gap-10">
           <div>
-            <div className="label">Market cap</div>
+            <div className="label">Market cap / FDV</div>
             <div className="mt-1 font-mono text-xl font-bold sm:text-2xl">
               {ready && mcap > 0 ? `${formatBot(mcap)} BOT` : ready ? '—' : 'Configure'}
             </div>
+            {ready && mcap > 0 && <BotUsd value={mcap} />}
           </div>
           <div>
             <div className="label">Spot</div>
             <div className="mt-1 font-mono text-xl font-bold sm:text-2xl">
               {ready && price > 0 ? `${formatBot(price)} BOT` : '—'}
             </div>
+            {ready && price > 0 && <BotUsd value={price} />}
           </div>
           <div>
             <div className="label">Pool BOT</div>
             <div className="mt-1 font-mono text-xl font-bold sm:text-2xl">
               {reserveBot != null ? formatBot(reserveBot) : '—'}
             </div>
+            {reserveBot != null && <BotUsd value={Number(formatEther(reserveBot))} />}
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--vyntra-primary)] px-4 py-2.5 text-sm font-semibold text-[#faf8ff] transition group-hover:brightness-110">
             Trade

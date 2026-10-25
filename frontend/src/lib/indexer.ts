@@ -136,6 +136,20 @@ export async function fetchStatsFromIndexer(): Promise<{
   return getJson('/v1/stats')
 }
 
+export type BotUsdPrice = {
+  priceUsd: number
+  source: 'geckoterminal'
+  referenceToken: 'WBOT'
+  referenceChainId: 677
+  updatedAt: number
+}
+
+export async function fetchBotUsdPriceFromIndexer(): Promise<BotUsdPrice | null> {
+  const data = await getJson<BotUsdPrice>('/v1/bot-usd')
+  if (!data || !Number.isFinite(data.priceUsd) || data.priceUsd <= 0) return null
+  return data
+}
+
 export type HoldersPayload = {
   launchId: number
   source: string

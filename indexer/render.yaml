@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: vyntra-indexer
+    runtime: node
+    rootDir: indexer
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: FACTORY_ADDRESS
+        sync: false
+      - key: INDEXER_CHAIN_ID
+        sync: false
+      - key: INDEXER_RPC_URL
+        sync: false
+      - key: INDEXER_START_BLOCK
+        sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

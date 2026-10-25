@@ -7,6 +7,7 @@ import { useLaunches } from '../hooks/useLaunches'
 import { useWatchlist } from '../hooks/useWatchlist'
 import { formatBot, type LaunchView } from '../lib/config'
 import { formatUserError } from '../lib/errors'
+import { BotUsd } from '../components/BotUsd'
 
 type Tab = 'live' | 'new' | 'graduating' | 'graduated' | 'watchlist'
 
@@ -34,7 +35,7 @@ export function Feed() {
     const live = launches.filter((l) => !l.graduated && !l.migrated).length
     const graduated = launches.filter((l) => l.graduated || l.migrated).length
     const volume = launches.reduce((s, l) => s + l.raisedBot, 0)
-    return { live, graduated, volume: formatBot(volume), total: launches.length, watchCount }
+    return { live, graduated, volume: formatBot(volume), volumeBot: volume, total: launches.length, watchCount }
   }, [launches, watchCount])
 
   const tabs: { id: Tab; label: string; icon: typeof Flame }[] = [
@@ -79,7 +80,7 @@ export function Feed() {
         <Stat label="On curve" value={String(stats.live)} />
         <Stat label="Graduated" value={String(stats.graduated)} />
         <Stat label="Watching" value={String(stats.watchCount)} />
-        <Stat label="BOT raised" value={stats.volume} mono />
+        <Stat label="BOT raised" value={stats.volume} mono sub={<BotUsd value={stats.volumeBot} />} />
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -163,7 +164,7 @@ export function Feed() {
   )
 }
 
-function Stat({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+function Stat({ label, value, mono, sub }: { label: string; value: string; mono?: boolean; sub?: React.ReactNode }) {
   return (
     <div className="card px-4 py-4 sm:px-5 sm:py-5">
       <div className="label">{label}</div>
@@ -174,6 +175,7 @@ function Stat({ label, value, mono }: { label: string; value: string; mono?: boo
       >
         {value}
       </div>
+      {sub}
     </div>
   )
 }
