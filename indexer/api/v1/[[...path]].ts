@@ -1,8 +1,15 @@
-import { handle } from 'hono/vercel'
-import { createApp } from '../../src/api.js'
-
 export const config = { runtime: 'edge' }
 
-// Mount at /api so /api/v1/... matches createApp basePath /api
-const app = createApp({ basePath: '/api' })
-export default handle(app)
+export default async function handler(req: Request) {
+  try {
+    const { handle } = await import('hono/vercel')
+    const { createApp } = await import('../../src/api.js')
+    const app = createApp({ basePath: '/api' })
+    return handle(app)(req)
+  } catch (e) {
+    return Response.json(
+      { error: 'boot_failed', detail: e instanceof Error ? e.message : String(e) },
+      { status: 500 },
+    )
+  }
+}

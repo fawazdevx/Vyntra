@@ -1,3 +1,10 @@
+import { createRequire } from 'node:module'
+try {
+  createRequire(import.meta.url)('dotenv').config()
+} catch {
+  // optional
+}
+
 import { POLL_MS } from './config.js'
 import { ensureSchema } from './db.js'
 import { runLoop, syncOnce } from './sync.js'

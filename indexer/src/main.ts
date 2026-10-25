@@ -1,3 +1,10 @@
+import { createRequire } from 'node:module'
+try {
+  createRequire(import.meta.url)('dotenv').config()
+} catch {
+  // optional
+}
+
 import { API_PORT, POLL_MS, FACTORY_ADDRESS } from './config.js'
 import { ensureSchema } from './db.js'
 import { startApi } from './serve-local.js'
