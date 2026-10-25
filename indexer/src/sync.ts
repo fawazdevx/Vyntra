@@ -8,7 +8,7 @@ import {
   START_BLOCK,
   requireFactory,
 } from './config.js'
-import { getDb, getMeta, setMeta, type LaunchRow } from './db.js'
+import { execute, getMeta, queryAll, queryOne, setMeta, type LaunchRow } from './db.js'
 
 const TOTAL_SUPPLY = 1_000_000_000
 
@@ -22,7 +22,7 @@ const client = createPublicClient({
   transport: http(RPC_URL),
 })
 
-function upsertLaunchFromSpawn(args: {
+async function upsertLaunchFromSpawn(args: {
   id: number
   token: Address
   curve: Address
@@ -34,18 +34,16 @@ function upsertLaunchFromSpawn(args: {
   createdAt: number
   createdBlock: number
 }) {
-  getDb()
-    .prepare(
-      `INSERT INTO launches (
-        id, token, curve, splitter, creator, name, symbol, image_uri, created_at, created_block, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        token=excluded.token, curve=excluded.curve, splitter=excluded.splitter,
-        creator=excluded.creator, name=excluded.name, symbol=excluded.symbol,
-        image_uri=excluded.image_uri, created_at=excluded.created_at,
-        created_block=excluded.created_block, updated_at=excluded.updated_at`,
-    )
-    .run(
+  await execute(
+    `INSERT INTO launches (
+      id, token, curve, splitter, creator, name, symbol, image_uri, created_at, created_block, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      token=excluded.token, curve=excluded.curve, splitter=excluded.splitter,
+      creator=excluded.creator, name=excluded.name, symbol=excluded.symbol,
+      image_uri=excluded.image_uri, created_at=excluded.created_at,
+      created_block=excluded.created_block, updated_at=excluded.updated_at`,
+    [
       args.id,
       args.token,
       args.curve,
@@ -57,7 +55,8 @@ function upsertLaunchFromSpawn(args: {
       args.createdAt,
       args.createdBlock,
       Math.floor(Date.now() / 1000),
-    )
+    ],
+  )
 }
 
 async function refreshLaunchState(id: number, token: Address, curve: Address) {
@@ -89,15 +88,13 @@ async function refreshLaunchState(id: number, token: Address, curve: Address) {
       .catch(() => ''),
   ])
 
-  getDb()
-    .prepare(
-      `UPDATE launches SET
-        progress_bps=?, graduated=?, migrated=?, external_pair=?, raised_bot=?,
-        buy_tax_bps=?, sell_tax_bps=?, image_uri=COALESCE(NULLIF(?, ''), image_uri),
-        description=?, updated_at=?
-       WHERE id=?`,
-    )
-    .run(
+  await execute(
+    `UPDATE launches SET
+      progress_bps=?, graduated=?, migrated=?, external_pair=?, raised_bot=?,
+      buy_tax_bps=?, sell_tax_bps=?, image_uri=COALESCE(NULLIF(?, ''), image_uri),
+      description=?, updated_at=?
+     WHERE id=?`,
+    [
       Number(progressBps),
       graduated ? 1 : 0,
       migrated ? 1 : 0,
@@ -109,10 +106,11 @@ async function refreshLaunchState(id: number, token: Address, curve: Address) {
       description || '',
       Math.floor(Date.now() / 1000),
       id,
-    )
+    ],
+  )
 }
 
-function insertTrade(row: {
+async function insertTrade(row: {
   launchId: number
   curve: string
   side: 'buy' | 'sell'
@@ -127,14 +125,12 @@ function insertTrade(row: {
   logIndex: number
   timestamp: number
 }) {
-  const info = getDb()
-    .prepare(
-      `INSERT OR IGNORE INTO trades (
-        launch_id, curve, side, trader, bot_amount, token_amount, fee, price, mcap,
-        block_number, tx_hash, log_index, timestamp
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
+  const info = await execute(
+    `INSERT OR IGNORE INTO trades (
+      launch_id, curve, side, trader, bot_amount, token_amount, fee, price, mcap,
+      block_number, tx_hash, log_index, timestamp
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
       row.launchId,
       row.curve,
       row.side,
@@ -148,18 +144,18 @@ function insertTrade(row: {
       row.txHash,
       row.logIndex,
       row.timestamp,
-    )
+    ],
+  )
 
-  if (info.changes > 0) {
-    getDb()
-      .prepare(
-        `UPDATE launches SET
-          trade_count = trade_count + 1,
-          volume_bot = volume_bot + ?,
-          updated_at = ?
-         WHERE id = ?`,
-      )
-      .run(row.botAmount, Math.floor(Date.now() / 1000), row.launchId)
+  if (info.rowsAffected > 0) {
+    await execute(
+      `UPDATE launches SET
+        trade_count = trade_count + 1,
+        volume_bot = volume_bot + ?,
+        updated_at = ?
+       WHERE id = ?`,
+      [row.botAmount, Math.floor(Date.now() / 1000), row.launchId],
+    )
   }
 }
 
@@ -178,14 +174,14 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
   const latest = await client.getBlockNumber()
   const safeTo = latest > BigInt(CONFIRMATIONS) ? latest - BigInt(CONFIRMATIONS) : 0n
 
-  const last = getMeta('last_block')
+  const last = await getMeta('last_block')
   let from = last ? BigInt(last) + 1n : START_BLOCK
   if (from > safeTo) {
     return { from, to: safeTo, launches: 0, trades: 0 }
   }
 
-  setMeta('factory', factory)
-  setMeta('chain_id', String(CHAIN_ID))
+  await setMeta('factory', factory)
+  await setMeta('chain_id', String(CHAIN_ID))
 
   const tsCache = new Map<string, number>()
   let newLaunches = 0
@@ -203,7 +199,7 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
   for (const log of spawnLogs) {
     const id = Number(log.args.id)
     const ts = log.blockNumber != null ? await blockTs(log.blockNumber, tsCache) : Math.floor(Date.now() / 1000)
-    upsertLaunchFromSpawn({
+    await upsertLaunchFromSpawn({
       id,
       token: log.args.token!,
       curve: log.args.curve!,
@@ -223,12 +219,11 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
   const onchainCount = Number(
     await client.readContract({ address: factory, abi: factoryAbi, functionName: 'launchCount' }),
   )
-  const dbCount = (
-    getDb().prepare('SELECT COUNT(*) AS c FROM launches').get() as { c: number }
-  ).c
+  const countRow = await queryOne<{ c: number }>('SELECT COUNT(*) AS c FROM launches')
+  const dbCount = Number(countRow?.c ?? 0)
   if (dbCount < onchainCount) {
     for (let id = 1; id <= onchainCount; id++) {
-      const exists = getDb().prepare('SELECT 1 FROM launches WHERE id = ?').get(id)
+      const exists = await queryOne<{ ok: number }>('SELECT 1 AS ok FROM launches WHERE id = ?', [id])
       if (exists) continue
       const launch = await client.readContract({
         address: factory,
@@ -236,7 +231,7 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
         functionName: 'getLaunch',
         args: [BigInt(id)],
       })
-      upsertLaunchFromSpawn({
+      await upsertLaunchFromSpawn({
         id,
         token: launch.token,
         curve: launch.curve,
@@ -254,10 +249,9 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
   }
 
   // 2) Trades + graduate/migrate per known curve
-  const launches = getDb().prepare('SELECT id, token, curve FROM launches').all() as Pick<
-    LaunchRow,
-    'id' | 'token' | 'curve'
-  >[]
+  const launches = await queryAll<Pick<LaunchRow, 'id' | 'token' | 'curve'>>(
+    'SELECT id, token, curve FROM launches',
+  )
 
   for (const L of launches) {
     const curve = L.curve as Address
@@ -300,7 +294,7 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
       const tok = Number(formatEther(e.args.tokensOut))
       const net = Math.max(bot - fee, 0)
       const price = tok > 0 ? net / tok : 0
-      insertTrade({
+      await insertTrade({
         launchId: L.id,
         curve,
         side: 'buy',
@@ -325,7 +319,7 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
       const bot = Number(formatEther(e.args.botOut))
       const tok = Number(formatEther(e.args.tokensIn))
       const price = tok > 0 ? bot / tok : 0
-      insertTrade({
+      await insertTrade({
         launchId: L.id,
         curve,
         side: 'sell',
@@ -363,24 +357,23 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
     for (const e of replies) {
       if (e.args.launchId == null || e.args.replyIndex == null) continue
       const ts = e.blockNumber != null ? await blockTs(e.blockNumber, tsCache) : Math.floor(Date.now() / 1000)
-      getDb()
-        .prepare(
-          `INSERT OR REPLACE INTO replies (launch_id, reply_index, author, body, timestamp, tx_hash)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
+      await execute(
+        `INSERT OR REPLACE INTO replies (launch_id, reply_index, author, body, timestamp, tx_hash)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
           Number(e.args.launchId),
           Number(e.args.replyIndex),
           e.args.author!,
           e.args.body || '',
           ts,
           e.transactionHash || '',
-        )
+        ],
+      )
     }
   }
 
-  setMeta('last_block', safeTo.toString())
-  setMeta('last_sync_at', String(Math.floor(Date.now() / 1000)))
+  await setMeta('last_block', safeTo.toString())
+  await setMeta('last_sync_at', String(Math.floor(Date.now() / 1000)))
 
   return { from, to: safeTo, launches: newLaunches, trades: newTrades }
 }

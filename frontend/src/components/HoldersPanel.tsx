@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { explorerAddress, formatBot, shortAddr } from '../lib/config'
 import { botTestnet } from '../lib/chains'
 import {
@@ -8,17 +8,22 @@ import {
   type HoldersPayload,
   type SnipersPayload,
 } from '../lib/indexer'
+import { holdersFromTrades, snipersFromTrades } from '../lib/holdersFromTrades'
+import type { TradePoint } from '../hooks/useTradeHistory'
 
 type Props = {
-  launchId: number
   symbol: string
+  /** Meme launch id — uses indexer when set and trades are not provided. */
+  launchId?: number
+  /** Trade tape for client-side holders/snipers (platform market or RPC fallback). */
+  trades?: TradePoint[]
 }
 
 type Tab = 'holders' | 'snipers'
 
 const CLUSTER_STYLE: Record<string, string> = {
-  whale: 'bg-[rgba(26,25,23,0.9)] text-white',
-  dolphin: 'bg-[rgba(26,25,23,0.12)] text-[var(--vyntra-fg)]',
+  whale: 'bg-[var(--vyntra-fg)] text-[var(--vyntra-card)]',
+  dolphin: 'bg-[rgba(124,58,237,0.12)] text-[var(--vyntra-fg)]',
   shrimp: 'bg-[var(--vyntra-elev)] text-[var(--vyntra-muted)]',
 }
 
@@ -35,15 +40,34 @@ function fmtTokens(n: number) {
   return n.toPrecision(3)
 }
 
-export function HoldersPanel({ launchId, symbol }: Props) {
+export function HoldersPanel({ launchId, symbol, trades }: Props) {
   const [tab, setTab] = useState<Tab>('holders')
   const [holders, setHolders] = useState<HoldersPayload | null>(null)
   const [snipers, setSnipers] = useState<SnipersPayload | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const fromTrades = useMemo(() => {
+    if (!trades) return null
+    return {
+      holders: holdersFromTrades(trades, 50),
+      snipers: snipersFromTrades(trades, 20),
+    }
+  }, [trades])
+
   useEffect(() => {
-    if (!isIndexerConfigured || !launchId) return
+    if (fromTrades) {
+      setHolders(fromTrades.holders)
+      setSnipers(fromTrades.snipers)
+      setError(null)
+      setLoading(false)
+      return
+    }
+    if (!isIndexerConfigured || !launchId) {
+      setHolders(null)
+      setSnipers(null)
+      return
+    }
     let cancelled = false
     setLoading(true)
     setError(null)
@@ -60,9 +84,10 @@ export function HoldersPanel({ launchId, symbol }: Props) {
     return () => {
       cancelled = true
     }
-  }, [launchId])
+  }, [launchId, fromTrades])
 
-  if (!isIndexerConfigured) return null
+  if (!fromTrades && !isIndexerConfigured) return null
+  if (!fromTrades && !launchId) return null
 
   const summary = holders?.summary
   const sniperSummary = snipers?.summary
@@ -84,7 +109,7 @@ export function HoldersPanel({ launchId, symbol }: Props) {
               onClick={() => setTab(key)}
               className={`rounded px-3 py-1.5 text-sm font-semibold transition ${
                 tab === key
-                  ? 'bg-[var(--vyntra-fg)] text-white'
+                  ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-card)]'
                   : 'text-[var(--vyntra-muted)] hover:text-[var(--vyntra-fg)]'
               }`}
             >
@@ -107,7 +132,10 @@ export function HoldersPanel({ launchId, symbol }: Props) {
               <Stat label="Holders" value={String(summary.holderCount)} />
               <Stat label="Top 1" value={pct(summary.top1Pct)} />
               <Stat label="Top 10" value={pct(summary.top10Pct)} />
-              <Stat label="Whales" value={`${summary.clusters.whale.count} · ${pct(summary.clusters.whale.pct, 0)}`} />
+              <Stat
+                label="Whales"
+                value={`${summary.clusters.whale.count} · ${pct(summary.clusters.whale.pct, 0)}`}
+              />
             </div>
           )}
           {summary && (
@@ -173,7 +201,7 @@ export function HoldersPanel({ launchId, symbol }: Props) {
             </div>
           )}
           <p className="border-t border-[var(--vyntra-border)] px-4 py-2.5 text-xs text-[var(--vyntra-faint)] sm:px-5">
-            Net curve buys − sells. Wallet-to-wallet transfers are not counted.
+            Net market buys − sells. Wallet-to-wallet transfers are not counted.
           </p>
         </div>
       ) : (
@@ -183,19 +211,24 @@ export function HoldersPanel({ launchId, symbol }: Props) {
               <Stat label="Early buyers" value={String(sniperSummary.sniperCount)} />
               <Stat label="Still holding" value={String(sniperSummary.stillHolding)} />
               <Stat label="Fully dumped" value={String(sniperSummary.fullyDumped)} />
-              <Stat
-                label="Avg dump"
-                value={pct((sniperSummary.avgDumpBps || 0) / 100, 0)}
-              />
+              <Stat label="Avg dump" value={pct((sniperSummary.avgDumpBps || 0) / 100, 0)} />
             </div>
           )}
           {sniperSummary && (
             <div className="flex flex-wrap gap-4 border-b border-[var(--vyntra-border)] px-4 py-3 text-sm text-[var(--vyntra-muted)] sm:px-5">
               <span>
-                Spent <span className="font-mono text-[var(--vyntra-fg)]">{formatBot(sniperSummary.totalSpentBot)}</span> BOT
+                Spent{' '}
+                <span className="font-mono text-[var(--vyntra-fg)]">
+                  {formatBot(sniperSummary.totalSpentBot)}
+                </span>{' '}
+                BOT
               </span>
               <span>
-                Hold <span className="font-mono text-[var(--vyntra-fg)]">{pct(sniperSummary.heldPctOfCirculating, 1)}</span> of float
+                Hold{' '}
+                <span className="font-mono text-[var(--vyntra-fg)]">
+                  {pct(sniperSummary.heldPctOfCirculating, 1)}
+                </span>{' '}
+                of float
               </span>
             </div>
           )}
@@ -232,13 +265,17 @@ export function HoldersPanel({ launchId, symbol }: Props) {
                         </a>
                       </td>
                       <td className="px-2 py-3 font-mono">
-                        {s.stillHolding ? fmtTokens(s.heldToken) : (
+                        {s.stillHolding ? (
+                          fmtTokens(s.heldToken)
+                        ) : (
                           <span className="text-[var(--vyntra-danger)]">dumped</span>
                         )}
                       </td>
                       <td
                         className={`px-2 py-3 font-mono ${
-                          s.dumpBps >= 5000 ? 'text-[var(--vyntra-danger)]' : 'text-[var(--vyntra-fg)]'
+                          s.dumpBps >= 5000
+                            ? 'text-[var(--vyntra-danger)]'
+                            : 'text-[var(--vyntra-fg)]'
                         }`}
                       >
                         {pct(s.dumpBps / 100, 0)}
@@ -253,7 +290,7 @@ export function HoldersPanel({ launchId, symbol }: Props) {
             </div>
           )}
           <p className="border-t border-[var(--vyntra-border)] px-4 py-2.5 text-xs text-[var(--vyntra-faint)] sm:px-5">
-            First {snipers?.window?.uniqueBuyers ?? 20} unique buyers by block order.
+            First {snipers?.window?.uniqueBuyers ?? 20} unique buyers by trade time.
           </p>
         </div>
       )}

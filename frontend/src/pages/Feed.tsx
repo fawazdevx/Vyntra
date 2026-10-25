@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Rocket, Flame, Clock, Trophy, RefreshCw, Star } from 'lucide-react'
 import { TokenCard } from '../components/TokenCard'
+import { PlatformTokenCard } from '../components/PlatformTokenCard'
 import { useLaunches } from '../hooks/useLaunches'
 import { useWatchlist } from '../hooks/useWatchlist'
 import { formatBot, type LaunchView } from '../lib/config'
@@ -82,7 +83,7 @@ export function Feed() {
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex gap-1 overflow-x-auto rounded-lg border border-[var(--vyntra-border)] bg-white p-1.5">
+        <div className="flex gap-1 overflow-x-auto rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-card)] p-1.5">
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -90,7 +91,7 @@ export function Feed() {
               onClick={() => setTab(id)}
               className={`inline-flex shrink-0 items-center gap-2 rounded-[var(--radius)] px-3.5 py-2.5 text-sm font-semibold transition ${
                 tab === id
-                  ? 'bg-[rgba(26,25,23,0.08)] text-[var(--vyntra-fg)]'
+                  ? 'bg-[rgba(124,58,237,0.12)] text-[var(--vyntra-primary)]'
                   : 'text-[var(--vyntra-muted)] hover:text-[var(--vyntra-fg)]'
               }`}
             >
@@ -128,23 +129,31 @@ export function Feed() {
           </button>
         </div>
       ) : filtered.length === 0 ? (
-        <div className="card flex flex-col items-center gap-4 px-6 py-20 text-center">
-          <p className="font-display text-2xl">
-            {tab === 'watchlist' ? 'Watchlist is empty' : 'No launches yet'}
-          </p>
-          <p className="text-base text-[var(--vyntra-muted)]">
-            {tab === 'watchlist'
-              ? 'Star a coin on any card to pin it here.'
-              : 'Be the first to launch here.'}
-          </p>
-          {tab !== 'watchlist' && (
-            <Link to="/spawn" className="btn-primary mt-1">
-              Launch token
-            </Link>
-          )}
+        <div className="space-y-4">
+          {tab !== 'watchlist' ? (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <PlatformTokenCard />
+            </div>
+          ) : null}
+          <div className="card flex flex-col items-center gap-4 px-6 py-20 text-center">
+            <p className="font-display text-2xl">
+              {tab === 'watchlist' ? 'Watchlist is empty' : 'No meme launches yet'}
+            </p>
+            <p className="text-base text-[var(--vyntra-muted)]">
+              {tab === 'watchlist'
+                ? 'Star a coin on any card to pin it here.'
+                : 'Trade $VYNTRA above, or be the first to launch a meme.'}
+            </p>
+            {tab !== 'watchlist' && (
+              <Link to="/spawn" className="btn-primary mt-1">
+                Launch token
+              </Link>
+            )}
+          </div>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {tab !== 'watchlist' ? <PlatformTokenCard /> : null}
           {filtered.map((launch: LaunchView) => (
             <TokenCard key={launch.id} launch={launch} />
           ))}

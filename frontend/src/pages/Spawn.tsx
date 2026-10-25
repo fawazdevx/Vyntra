@@ -407,14 +407,14 @@ export function Spawn() {
             onClick={() => setAgentMode((v) => !v)}
             className={`flex w-full items-center gap-3 rounded-lg border px-4 py-3.5 text-left transition ${
               agentMode
-                ? 'border-[var(--vyntra-fg)] bg-[rgba(26,25,23,0.04)]'
-                : 'border-[var(--vyntra-border)] bg-white hover:border-[var(--vyntra-border-strong)]'
+                ? 'border-[var(--vyntra-fg)] bg-[var(--vyntra-hover)]'
+                : 'border-[var(--vyntra-border)] bg-[var(--vyntra-card)] hover:border-[var(--vyntra-border-strong)]'
             }`}
           >
             <span
               className={`flex h-10 w-10 items-center justify-center rounded-md ${
                 agentMode
-                  ? 'bg-[var(--vyntra-fg)] text-[#fafaf8]'
+                  ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-card)]'
                   : 'bg-[var(--vyntra-elev)] text-[var(--vyntra-muted)]'
               }`}
             >
@@ -491,7 +491,7 @@ export function Spawn() {
         <div className="card overflow-hidden">
           <div className="relative h-44 bg-[var(--vyntra-elev)]">
             <div className="absolute bottom-5 left-5 flex items-end gap-3.5">
-              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-lg bg-white text-xl font-bold text-[var(--vyntra-fg)] ring-2 ring-[var(--vyntra-bg)]">
+              <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-lg bg-[var(--vyntra-elev)] text-xl font-bold text-[var(--vyntra-fg)] ring-2 ring-[var(--vyntra-bg)]">
                 {imageURI ? (
                   <img src={imageURI} alt="" className="h-full w-full object-cover" />
                 ) : (

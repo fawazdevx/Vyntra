@@ -37,6 +37,12 @@ export const KEEPER_ADDRESS = (optionalAddress(import.meta.env.VITE_KEEPER_ADDRE
   ZERO_ADDRESS) as Address
 export const isKeeperConfigured = Boolean(optionalAddress(import.meta.env.VITE_KEEPER_ADDRESS))
 
+/** Static brand art in frontend/public (platform token has no on-chain imageURI). */
+export const VYNTRA_LOGO = '/vyntra.png'
+
+/** On-chain board thread id for $VYNTRA (VyntraBoard.PLATFORM_THREAD). */
+export const PLATFORM_REPLY_ID = 0
+
 /** @deprecated use VYNTRA_TOKEN */
 export const SPAWN_TOKEN = VYNTRA_TOKEN
 /** @deprecated use VYNTRA_MARKET */
@@ -100,3 +106,8 @@ export function bdexSwapUrl(token: string) {
 export function bdexPairUrl(pair: string) {
   return `https://dex.botchain.ai/pools/${pair}`
 }
+
+/** Official BOT Chain bridge (not operated by Vyntra). */
+export const BRIDGE_URL = 'https://bridge.botchain.ai/'
+export const BDEX_URL = 'https://dex.botchain.ai/'
+export const BOT_CHAIN_USDT = '0xaBabc7Ddc03e501d190C676BF3d92ef0e6e87a3C' as Address

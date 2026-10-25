@@ -15,7 +15,7 @@ export function ImageUpload({ value, onChange, disabled }: Props) {
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [showUrl, setShowUrl] = useState(false)
+  const [showUrl, setShowUrl] = useState(true)
   const [localPreview, setLocalPreview] = useState<string | null>(null)
 
   const preview = localPreview || value
@@ -41,9 +41,16 @@ export function ImageUpload({ value, onChange, disabled }: Props) {
       try {
         const url = await uploadTokenImage(file)
         onChange(url)
+        setShowUrl(false)
       } catch (err) {
-        onChange('')
-        setError(formatUserError(err, 'Image upload failed. Try another file or paste a URL.'))
+        // Keep local preview for UX, open paste-URL so launch can still proceed.
+        setShowUrl(true)
+        setError(
+          formatUserError(
+            err,
+            'Hosted upload failed. Paste a public https:// image URL below to continue.',
+          ),
+        )
       } finally {
         setUploading(false)
       }
@@ -84,7 +91,7 @@ export function ImageUpload({ value, onChange, disabled }: Props) {
         }}
         className={`relative flex min-h-[148px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed px-4 py-6 text-center transition ${
           dragging
-            ? 'border-cyan-400/70 bg-cyan-500/10'
+            ? 'border-[var(--vyntra-primary)] bg-[rgba(124,58,237,0.08)]'
             : 'border-spawn-border bg-spawn-elev/50 hover:border-spawn-border-strong hover:bg-spawn-elev/80'
         } ${disabled || uploading ? 'pointer-events-none opacity-70' : ''}`}
       >
@@ -99,8 +106,8 @@ export function ImageUpload({ value, onChange, disabled }: Props) {
         <div className="relative z-10 flex flex-col items-center gap-2">
           {uploading ? (
             <>
-              <Loader2 className="h-7 w-7 animate-spin text-cyan-300" />
-              <p className="text-sm font-medium text-cyan-100">Uploading…</p>
+              <Loader2 className="h-7 w-7 animate-spin text-[var(--vyntra-primary)]" />
+              <p className="text-sm font-medium text-[var(--vyntra-fg)]">Uploading…</p>
               <p className="text-xs text-spawn-faint">Compressing and hosting your image</p>
             </>
           ) : preview ? (
@@ -115,7 +122,7 @@ export function ImageUpload({ value, onChange, disabled }: Props) {
             </>
           ) : (
             <>
-              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-500/15 text-cyan-300">
+              <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[rgba(124,58,237,0.12)] text-[var(--vyntra-primary)]">
                 <Upload className="h-5 w-5" />
               </span>
               <p className="text-sm font-semibold text-spawn-text">Drop an image or click to upload</p>
@@ -199,7 +206,7 @@ export function ImageUpload({ value, onChange, disabled }: Props) {
       ) : null}
 
       {error ? <p className="text-sm text-rose-400">{error}</p> : null}
-      <p className="text-xs text-spawn-faint">Required. Upload a file or paste a URL — spawn needs an image.</p>
+      <p className="text-xs text-spawn-faint">Required. Upload a file, or paste any public https image URL if upload hosts are blocked.</p>
     </div>
   )
 }

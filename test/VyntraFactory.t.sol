@@ -169,7 +169,20 @@ contract VyntraFactoryTest is Test {
         vm.prank(bob);
         VyntraCurve(payable(curve)).buy{value: 1.02 ether}(0, address(0));
 
+        // Graduation is status-only; trading stays on Vyntra until an explicit migrate.
         assertTrue(VyntraCurve(payable(curve)).graduated());
+        assertFalse(VyntraCurve(payable(curve)).migrated());
+        assertEq(
+            keccak256(bytes(VyntraCurve(payable(curve)).tradeVenue())),
+            keccak256(bytes("amm"))
+        );
+
+        vm.prank(bob);
+        VyntraCurve(payable(curve)).buy{value: 0.01 ether}(0, address(0));
+
+        // Optional manual migrate locks LP and closes the curve.
+        VyntraCurve(payable(curve)).migrateToBdex();
+
         assertTrue(VyntraCurve(payable(curve)).migrated());
         assertTrue(VyntraCurve(payable(curve)).externalPair() != address(0));
         assertEq(
@@ -178,10 +191,12 @@ contract VyntraFactoryTest is Test {
         );
         assertEq(VyntraCurve(payable(curve)).realBotReserves(), 0);
 
-        // Curve trading stops after migrate
         vm.prank(bob);
         vm.expectRevert(VyntraCurve.Migrated.selector);
         VyntraCurve(payable(curve)).buy{value: 0.01 ether}(0, address(0));
+
+        // Creator fee claims still work post-migrate (fees never left the curve).
+
 
         // Creator fees remain claimable on the curve
         uint256 fees = VyntraCurve(payable(curve)).creatorFees();

@@ -1,4 +1,4 @@
-import { getDb } from './db.js'
+import { queryAll, queryOne } from './db.js'
 
 /** Fixed supply used for mcap elsewhere in the indexer. */
 export const TOTAL_SUPPLY = 1_000_000_000
@@ -69,26 +69,11 @@ function concentration(balances: number[], circ: number, n: number): number {
 }
 
 /** Net curve positions from Buy/Sell events (pre-migration approximation). */
-export function getHolders(
+export async function getHolders(
   launchId: number,
   limit = 100,
-): { holders: HolderRow[]; summary: HoldersSummary } {
-  const rows = getDb()
-    .prepare(
-      `SELECT
-         trader AS address,
-         SUM(CASE WHEN side = 'buy' THEN token_amount ELSE 0 END) AS bought,
-         SUM(CASE WHEN side = 'sell' THEN token_amount ELSE 0 END) AS sold,
-         SUM(CASE WHEN side = 'buy' THEN bot_amount ELSE 0 END) AS spent_bot,
-         SUM(CASE WHEN side = 'sell' THEN bot_amount ELSE 0 END) AS received_bot,
-         COUNT(*) AS trade_count,
-         MIN(timestamp) AS first_trade_at,
-         MAX(timestamp) AS last_trade_at
-       FROM trades
-       WHERE launch_id = ?
-       GROUP BY trader`,
-    )
-    .all(launchId) as Array<{
+): Promise<{ holders: HolderRow[]; summary: HoldersSummary }> {
+  const rows = await queryAll<{
     address: string
     bought: number
     sold: number
@@ -97,7 +82,21 @@ export function getHolders(
     trade_count: number
     first_trade_at: number
     last_trade_at: number
-  }>
+  }>(
+    `SELECT
+       trader AS address,
+       SUM(CASE WHEN side = 'buy' THEN token_amount ELSE 0 END) AS bought,
+       SUM(CASE WHEN side = 'sell' THEN token_amount ELSE 0 END) AS sold,
+       SUM(CASE WHEN side = 'buy' THEN bot_amount ELSE 0 END) AS spent_bot,
+       SUM(CASE WHEN side = 'sell' THEN bot_amount ELSE 0 END) AS received_bot,
+       COUNT(*) AS trade_count,
+       MIN(timestamp) AS first_trade_at,
+       MAX(timestamp) AS last_trade_at
+     FROM trades
+     WHERE launch_id = ?
+     GROUP BY trader`,
+    [launchId],
+  )
 
   const nets = rows
     .map((r) => ({
@@ -164,31 +163,30 @@ export function getHolders(
  * First N unique buyers by (block, log). Dump rate from later sells.
  * `earlySeconds` optionally restricts to buys within that window of the first buy.
  */
-export function getSnipers(
+export async function getSnipers(
   launchId: number,
   opts: { limit?: number; earlySeconds?: number } = {},
-): {
+): Promise<{
   snipers: SniperRow[]
   summary: Record<string, number>
   window: Record<string, number>
-} {
+}> {
   const limit = Math.min(Math.max(opts.limit ?? 20, 1), 100)
   const earlySeconds = opts.earlySeconds && opts.earlySeconds > 0 ? opts.earlySeconds : 0
 
-  const firstBuys = getDb()
-    .prepare(
-      `SELECT trader, timestamp, block_number, token_amount, bot_amount, tx_hash, log_index
-       FROM trades
-       WHERE launch_id = ? AND side = 'buy'
-       ORDER BY block_number ASC, log_index ASC, id ASC`,
-    )
-    .all(launchId) as Array<{
+  const firstBuys = await queryAll<{
     trader: string
     timestamp: number
     block_number: number
     token_amount: number
     bot_amount: number
-  }>
+  }>(
+    `SELECT trader, timestamp, block_number, token_amount, bot_amount, tx_hash, log_index
+     FROM trades
+     WHERE launch_id = ? AND side = 'buy'
+     ORDER BY block_number ASC, log_index ASC, id ASC`,
+    [launchId],
+  )
 
   if (firstBuys.length === 0) {
     return {
@@ -217,32 +215,31 @@ export function getSnipers(
     if (sniperAddrs.length >= limit) break
   }
 
-  const { summary: holderSummary } = getHolders(launchId, 500)
+  const { summary: holderSummary } = await getHolders(launchId, 500)
   const circulating = holderSummary.circulating
 
   const snipers: SniperRow[] = []
   for (let i = 0; i < sniperAddrs.length; i++) {
     const address = sniperAddrs[i]
-    const agg = getDb()
-      .prepare(
-        `SELECT
-           SUM(CASE WHEN side = 'buy' THEN token_amount ELSE 0 END) AS bought,
-           SUM(CASE WHEN side = 'sell' THEN token_amount ELSE 0 END) AS sold,
-           SUM(CASE WHEN side = 'buy' THEN bot_amount ELSE 0 END) AS spent_bot,
-           SUM(CASE WHEN side = 'sell' THEN bot_amount ELSE 0 END) AS received_bot,
-           MIN(CASE WHEN side = 'buy' THEN timestamp END) AS first_buy_at,
-           MIN(CASE WHEN side = 'buy' THEN block_number END) AS first_buy_block
-         FROM trades
-         WHERE launch_id = ? AND trader = ?`,
-      )
-      .get(launchId, address) as {
+    const agg = await queryOne<{
       bought: number
       sold: number
       spent_bot: number
       received_bot: number
       first_buy_at: number
       first_buy_block: number
-    }
+    }>(
+      `SELECT
+         SUM(CASE WHEN side = 'buy' THEN token_amount ELSE 0 END) AS bought,
+         SUM(CASE WHEN side = 'sell' THEN token_amount ELSE 0 END) AS sold,
+         SUM(CASE WHEN side = 'buy' THEN bot_amount ELSE 0 END) AS spent_bot,
+         SUM(CASE WHEN side = 'sell' THEN bot_amount ELSE 0 END) AS received_bot,
+         MIN(CASE WHEN side = 'buy' THEN timestamp END) AS first_buy_at,
+         MIN(CASE WHEN side = 'buy' THEN block_number END) AS first_buy_block
+       FROM trades
+       WHERE launch_id = ? AND trader = ?`,
+      [launchId, address],
+    )
 
     const boughtToken = agg?.bought || 0
     const soldToken = agg?.sold || 0

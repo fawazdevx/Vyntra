@@ -8,7 +8,7 @@ import {VyntraRevenueSplitter} from "./VyntraRevenueSplitter.sol";
 import {IUniswapV2Router02, IUniswapV2Factory} from "./interfaces/IUniswapV2.sol";
 
 /// @title VyntraCurve
-/// @notice Constant-product launch curve. At graduation, liquidity migrates to BDEX V2
+/// @notice Constant-product launch curve. Graduation is a status flag; trading stays on-curve
 ///         (Uniswap V2-style) when a router is configured; LP is burned/locked.
 ///         If no router is set, trading continues on this locked AMM.
 ///         Optional Argus meme tax is taken after the 1.25% protocol fee and sent to the splitter.
@@ -310,7 +310,7 @@ contract VyntraCurve is ReentrancyGuard {
     }
 
     /// @notice Permissionless: migrate graduated curve liquidity to BDEX V2 and lock LP.
-    /// @dev Auto-called on graduation when `bdexRouter` is set. Safe to retry if auto-migrate failed.
+    /// @dev Optional. Closes curve buy/sell. Prefer leaving liquidity on Vyntra; users import the token on BDEX (mainnet) if they want an external market.
     function migrateToBdex() external nonReentrant {
         if (!graduated) revert NotGraduated();
         if (migrated) revert AlreadyMigrated();
@@ -372,17 +372,13 @@ contract VyntraCurve is ReentrancyGuard {
         protocolFees += protocolCut;
     }
 
-    /// @dev Graduation milestone. If BDEX router is configured, migrate LP immediately.
+    /// @dev Graduation milestone only. Trading stays on this curve (Argus-style).
+    ///      Optional `migrateToBdex()` remains permissionless for mainnet LP lockouts — it closes the curve.
     function _graduate() internal {
         if (graduated) return;
         graduated = true;
         uint256 tokenLiquidity = totalSupply - tokensSold;
         emit Graduated(address(token), realBotReserves, tokenLiquidity);
-
-        if (bdexRouter != address(0)) {
-            // Best-effort: if migrate fails (router pause, etc.) keep internal AMM until retry.
-            try this.migrateToBdexExternal() {} catch {}
-        }
     }
 
     /// @dev External wrapper so `_graduate` can try/catch migration without bubbling reverts.

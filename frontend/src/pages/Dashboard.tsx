@@ -229,7 +229,7 @@ export function Dashboard() {
                 const busy = isPending || confirming
 
                 return (
-                  <div key={l.id} className="space-y-4 px-5 py-5 transition hover:bg-[rgba(26,25,23,0.02)]">
+                  <div key={l.id} className="space-y-4 px-5 py-5 transition hover:bg-[var(--vyntra-hover)]">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex min-w-0 items-center gap-3">
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-[var(--vyntra-elev)] text-xs font-bold">
@@ -379,7 +379,7 @@ function TaxBucket({
 }) {
   const n = Number(amount) / 1e18
   return (
-    <div className="flex items-center justify-between gap-2 rounded-md bg-white px-3 py-2">
+    <div className="flex items-center justify-between gap-2 rounded-md bg-[var(--vyntra-elev)] px-3 py-2">
       <div>
         <div className="label">{label}</div>
         <div className="mt-0.5 font-mono text-sm">{formatBot(n)} BOT</div>

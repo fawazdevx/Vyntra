@@ -5,17 +5,28 @@ import { Spawn } from './pages/Spawn'
 import { Token } from './pages/Token'
 import { Dashboard } from './pages/Dashboard'
 import { Portfolio } from './pages/Portfolio'
+import { Platform } from './pages/Platform'
+import { Bridge } from './pages/Bridge'
+import { Landing } from './pages/Landing'
+import { ErrorBoundary } from './components/ErrorBoundary'
+
+function withBoundary(node: React.ReactNode) {
+  return <ErrorBoundary>{node}</ErrorBoundary>
+}
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route index element={withBoundary(<Landing />)} />
         <Route element={<Layout />}>
-          <Route index element={<Feed />} />
-          <Route path="spawn" element={<Spawn />} />
-          <Route path="token/:id" element={<Token />} />
-          <Route path="dashboard" element={<Dashboard />} />
-          <Route path="portfolio" element={<Portfolio />} />
+          <Route path="markets" element={withBoundary(<Feed />)} />
+          <Route path="spawn" element={withBoundary(<Spawn />)} />
+          <Route path="token/:id" element={withBoundary(<Token />)} />
+          <Route path="dashboard" element={withBoundary(<Dashboard />)} />
+          <Route path="portfolio" element={withBoundary(<Portfolio />)} />
+          <Route path="vyntra" element={withBoundary(<Platform />)} />
+          <Route path="bridge" element={withBoundary(<Bridge />)} />
         </Route>
       </Routes>
     </BrowserRouter>

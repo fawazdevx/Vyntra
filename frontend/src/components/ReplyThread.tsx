@@ -25,16 +25,18 @@ type Reply = {
 type Props = {
   launchId: number
   tokenSymbol?: string
+  /** When true, copy mentions platform thread (launchId 0). */
+  platformThread?: boolean
 }
 
-export function ReplyThread({ launchId, tokenSymbol }: Props) {
+export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
   const { switchChain, isPending: switching } = useSwitchChain()
   const [body, setBody] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
 
-  const enabled = isBoardConfigured && launchId > 0
+  const enabled = isBoardConfigured && launchId >= 0
 
   const { data: count, refetch: refetchCount } = useReadContract({
     address: BOARD_ADDRESS,
@@ -116,7 +118,7 @@ export function ReplyThread({ launchId, tokenSymbol }: Props) {
         <div className="flex items-center gap-2">
           <MessageCircle className="h-4 w-4 text-[var(--vyntra-muted)]" />
           <h2 className="font-display text-lg">
-            Replies{tokenSymbol ? ` · $${tokenSymbol}` : ''}
+            Replies{tokenSymbol ? ` · $${tokenSymbol}` : ''}{platformThread ? ' · platform' : ''}
           </h2>
         </div>
         <span className="chip">{replyCount}</span>
@@ -167,7 +169,7 @@ export function ReplyThread({ launchId, tokenSymbol }: Props) {
       <div className="divide-y divide-[var(--vyntra-border)]">
         {replyCount === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-[var(--vyntra-muted)]">
-            No replies yet. Be the first voice on this launch.
+            No replies yet. Be the first voice here.
           </p>
         ) : (
           replies.map((r, i) => (

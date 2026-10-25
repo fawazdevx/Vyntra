@@ -37,6 +37,17 @@ contract VyntraBoardTest is Test {
         assertEq(page[1].author, alice);
     }
 
+    function test_PlatformThread() public {
+        vm.prank(bob);
+        board.postReply(0, "gm $VYNTRA");
+        vm.prank(alice);
+        board.postReply(board.PLATFORM_THREAD(), "flywheel go brrr");
+        assertEq(board.getReplyCount(0), 2);
+        VyntraBoard.Reply memory r0 = board.getReply(0, 0);
+        assertEq(r0.author, bob);
+        assertEq(r0.body, "gm $VYNTRA");
+    }
+
     function test_RejectsBadLaunchAndBody() public {
         vm.prank(bob);
         vm.expectRevert(VyntraBoard.BadLaunch.selector);

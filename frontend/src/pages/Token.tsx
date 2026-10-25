@@ -23,7 +23,7 @@ import { HoldersPanel } from '../components/HoldersPanel'
 import { ReplyThread } from '../components/ReplyThread'
 import { ShareCard } from '../components/ShareCard'
 import {
-  bdexSwapUrl,
+  BDEX_URL,
   explorerAddress,
   explorerTx,
   formatBot,
@@ -237,7 +237,7 @@ export function Token() {
     reset()
 
     if (isMigrated) {
-      setMsg('This market migrated to BDEX. Use Trade on BDEX.')
+      setMsg('This market migrated. Curve trading is closed — import the token on BDEX if you need the external pair.')
       return
     }
     if (!isConnected || !address) {
@@ -306,7 +306,7 @@ export function Token() {
             ? formatUserError(error, 'This launch could not be loaded.')
             : 'Check the launch id or return to markets.'}
         </p>
-        <Link to="/" className="btn-primary mt-2 inline-flex">
+        <Link to="/markets" className="btn-primary mt-2 inline-flex">
           Back to markets
         </Link>
       </div>
@@ -322,7 +322,7 @@ export function Token() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Link
-          to="/"
+          to="/markets"
           className="inline-flex items-center gap-2 text-base text-[var(--vyntra-muted)] transition hover:text-[var(--vyntra-fg)]"
         >
           <ArrowLeft className="h-5 w-5" />
@@ -345,7 +345,7 @@ export function Token() {
             </span>
           )}
           {isMigrated ? (
-            <span className="chip-live">On BDEX</span>
+            <span className="chip-live">LP locked</span>
           ) : isGraduated ? (
             <span className="chip-live">Graduated</span>
           ) : (
@@ -428,6 +428,7 @@ export function Token() {
         <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
           <ShareCard launch={launch} />
           <div className="card p-5">
+            {!isMigrated && (
             <div className="mb-5 flex gap-1.5 rounded-lg bg-black/45 p-1.5">
               {(['buy', 'sell'] as const).map((s) => (
                 <button
@@ -450,38 +451,72 @@ export function Token() {
                 </button>
               ))}
             </div>
+            )}
 
             {isMigrated ? (
               <div className="mb-4 space-y-3 rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] px-4 py-3 text-sm">
-                <div className="font-semibold text-[var(--vyntra-fg)]">Migrated to BDEX</div>
+                <div className="font-semibold text-[var(--vyntra-fg)]">Trading closed on Vyntra</div>
                 <p className="leading-relaxed text-[var(--vyntra-muted)]">
-                  Liquidity is locked on BDEX V2. Trade on the external market — curve buys/sells are
-                  closed.
+                  This launch already migrated LP to a BDEX V2 pair, so the bonding curve can no longer
+                  buy or sell. Newer launches stay tradeable on Vyntra after graduation. To trade this
+                  token outside Vyntra, import the contract on BDEX (mainnet — testnet listing is limited).
                 </p>
                 {externalPair !== zeroAddress && (
                   <p className="font-mono text-xs text-[var(--vyntra-faint)]">
-                    Pair {shortAddr(externalPair)}
+                    Pair{' '}
+                    <a
+                      href={explorerAddress(externalPair)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline hover:text-[var(--vyntra-fg)]"
+                    >
+                      {shortAddr(externalPair)}
+                    </a>
                   </p>
                 )}
-                <a
-                  href={bdexSwapUrl(launch.token)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-primary inline-flex w-full"
-                >
-                  Trade on BDEX
-                  <ExternalLink className="h-4 w-4" />
-                </a>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    className="btn-primary inline-flex w-full justify-center"
+                    onClick={() => copyAddr(launch.token)}
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copy token address
+                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <a
+                      href={explorerAddress(launch.token)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-ghost inline-flex flex-1 justify-center"
+                    >
+                      Token contract
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                    <a
+                      href={BDEX_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-ghost inline-flex flex-1 justify-center"
+                    >
+                      Open BDEX
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </div>
+                </div>
               </div>
             ) : isGraduated ? (
               <div className="mb-4 space-y-2 rounded-lg border border-[rgba(15,122,78,0.3)] bg-[rgba(15,122,78,0.08)] px-4 py-3 text-sm text-[var(--vyntra-success)]">
-                <div className="font-semibold">Graduated — trading is live</div>
+                <div className="font-semibold">Graduated — still tradeable here</div>
                 <p className="leading-relaxed opacity-90">
-                  Launch goal reached. Buy and sell keep working here until BDEX migration completes.
+                  Launch goal reached. Buy and sell stay on Vyntra. For an external market on mainnet,
+                  import the token contract on BDEX.
                 </p>
               </div>
             ) : null}
 
+            {!isMigrated && (
+            <>
             <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-zinc-500">
               Trade
             </div>
@@ -564,7 +599,6 @@ export function Token() {
                   }
                   onClick={trade}
                   disabled={
-                    isMigrated ||
                     isPending ||
                     confirming ||
                     parsedAmount == null ||
@@ -595,6 +629,8 @@ export function Token() {
               >
                 View transaction <ExternalLink className="h-4 w-4" />
               </a>
+            )}
+            </>
             )}
           </div>
 

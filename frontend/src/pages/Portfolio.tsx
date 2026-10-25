@@ -136,7 +136,7 @@ export function Portfolio() {
               onClick={() => setTab(key)}
               className={`rounded px-3 py-1.5 text-sm font-semibold transition ${
                 tab === key
-                  ? 'bg-[var(--vyntra-fg)] text-white'
+                  ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-card)]'
                   : 'text-[var(--vyntra-muted)] hover:text-[var(--vyntra-fg)]'
               }`}
             >

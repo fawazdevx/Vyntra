@@ -16,7 +16,7 @@ export function ShareCard({ launch, compact }: Props) {
 
   const shareText = useMemo(() => {
     const status = launch.migrated
-      ? 'live on BDEX'
+      ? 'LP locked on BDEX'
       : launch.graduated
         ? 'graduated'
         : `${Math.min(100, launch.progressBps / 100).toFixed(0)}% to graduate`

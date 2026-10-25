@@ -30,7 +30,10 @@ contract VyntraBoard {
         string body;
     }
 
-    /// @dev launchId => replies (1-indexed launch ids from factory)
+    /// @notice Reserved id for $VYNTRA platform discussion (not a factory launch).
+    uint256 public constant PLATFORM_THREAD = 0;
+
+    /// @dev launchId => replies (0 = platform token; 1+ = factory launches)
     mapping(uint256 => Reply[]) private _replies;
 
     event ReplyPosted(
@@ -50,10 +53,12 @@ contract VyntraBoard {
     }
 
     function postReply(uint256 launchId, string calldata body) external {
-        if (launchId == 0 || launchId > factory.launchCount()) revert BadLaunch();
-        // Confirm launch slot is occupied (token non-zero) via public mapping getter
-        (address token,,,,,,) = factory.launches(launchId);
-        if (token == address(0)) revert BadLaunch();
+        if (launchId != PLATFORM_THREAD) {
+            if (launchId > factory.launchCount()) revert BadLaunch();
+            // Confirm launch slot is occupied (token non-zero) via public mapping getter
+            (address token,,,,,,) = factory.launches(launchId);
+            if (token == address(0)) revert BadLaunch();
+        }
 
         bytes memory b = bytes(body);
         if (b.length == 0) revert EmptyBody();

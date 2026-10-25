@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useTheme } from '../lib/theme'
 import {
   createChart,
   CandlestickSeries,
@@ -17,6 +18,36 @@ import {
   type AutoscaleInfoProvider,
 } from 'lightweight-charts'
 import type { TradePoint } from '../hooks/useTradeHistory'
+
+
+function chartTheme(mode: 'light' | 'dark') {
+  if (mode === 'dark') {
+    return {
+      background: '#14101f',
+      text: '#a89bc4',
+      grid: 'rgba(167, 139, 250, 0.08)',
+      crosshair: 'rgba(244, 240, 255, 0.35)',
+      crosshairLabel: '#1c162c',
+      areaLine: '#c4b5fd',
+      areaTop: 'rgba(167, 139, 250, 0.22)',
+      areaBottom: 'rgba(167, 139, 250, 0.02)',
+      up: '#34d399',
+      down: '#f87171',
+    }
+  }
+  return {
+    background: '#ffffff',
+    text: '#6b6860',
+    grid: 'rgba(26,25,23,0.06)',
+    crosshair: 'rgba(26,25,23,0.35)',
+    crosshairLabel: '#1a1917',
+    areaLine: '#1a1917',
+    areaTop: 'rgba(26,25,23,0.16)',
+    areaBottom: 'rgba(26,25,23,0.02)',
+    up: '#0f7a4e',
+    down: '#c23b3b',
+  }
+}
 
 export type ChartInterval = {
   id: string
@@ -259,6 +290,7 @@ function applyVisibleRange(chart: IChartApi, barCount: number, widthPx: number) 
 }
 
 export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '5m' }: Props) {
+  const { theme } = useTheme()
   const shellRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -288,33 +320,34 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
     const el = containerRef.current
     if (!el) return
 
+    const colors = chartTheme(theme)
     const chart = createChart(el, {
       autoSize: true,
       height,
       layout: {
-        background: { type: ColorType.Solid, color: '#ffffff' },
-        textColor: '#6b6860',
+        background: { type: ColorType.Solid, color: colors.background },
+        textColor: colors.text,
         fontFamily: 'JetBrains Mono, ui-monospace, monospace',
         fontSize: 11,
         attributionLogo: false,
       },
       grid: {
-        vertLines: { color: 'rgba(26,25,23,0.06)' },
-        horzLines: { color: 'rgba(26,25,23,0.06)' },
+        vertLines: { color: colors.grid },
+        horzLines: { color: colors.grid },
       },
       crosshair: {
         mode: CrosshairMode.Normal,
         vertLine: {
-          color: 'rgba(26,25,23,0.35)',
+          color: colors.crosshair,
           width: 1,
           style: 2,
-          labelBackgroundColor: '#1a1917',
+          labelBackgroundColor: colors.crosshairLabel,
         },
         horzLine: {
-          color: 'rgba(26,25,23,0.35)',
+          color: colors.crosshair,
           width: 1,
           style: 2,
-          labelBackgroundColor: '#1a1917',
+          labelBackgroundColor: colors.crosshairLabel,
         },
       },
       rightPriceScale: {
@@ -343,11 +376,11 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
     }
 
     const candles = chart.addSeries(CandlestickSeries, {
-      upColor: '#0f7a4e',
-      downColor: '#c23b3b',
+      upColor: colors.up,
+      downColor: colors.down,
       borderVisible: false,
-      wickUpColor: '#0f7a4e',
-      wickDownColor: '#c23b3b',
+      wickUpColor: colors.up,
+      wickDownColor: colors.down,
       priceLineVisible: true,
       lastValueVisible: true,
       priceFormat,
@@ -355,9 +388,9 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
     })
 
     const area = chart.addSeries(AreaSeries, {
-      lineColor: '#1a1917',
-      topColor: 'rgba(26,25,23,0.16)',
-      bottomColor: 'rgba(26,25,23,0.02)',
+      lineColor: colors.areaLine,
+      topColor: colors.areaTop,
+      bottomColor: colors.areaBottom,
       lineWidth: 2,
       priceLineVisible: true,
       lastValueVisible: true,
@@ -405,7 +438,7 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
       areaRef.current = null
       volumeRef.current = null
     }
-  }, [height])
+  }, [height, theme])
 
   useEffect(() => {
     chartRef.current?.applyOptions({
@@ -478,7 +511,7 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
   return (
     <div
       ref={shellRef}
-      className="relative w-full overflow-hidden rounded-xl border border-[var(--vyntra-border)] bg-white"
+      className="relative w-full overflow-hidden rounded-xl border border-[var(--vyntra-border)] bg-[var(--vyntra-card)]"
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--vyntra-border)] px-4 py-2.5 sm:px-5">
         <div className="flex items-center gap-3">
@@ -512,7 +545,7 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
                 className={`min-w-[2.4rem] rounded px-2 py-1 font-mono text-xs font-semibold tabular-nums transition ${
                   active
                     ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-bg)]'
-                    : 'text-[var(--vyntra-muted)] hover:bg-white hover:text-[var(--vyntra-fg)]'
+                    : 'text-[var(--vyntra-muted)] hover:bg-[var(--vyntra-elev)] hover:text-[var(--vyntra-fg)]'
                 }`}
               >
                 {opt.label}
@@ -525,7 +558,7 @@ export function PriceChart({ trades, spotMcap, height = 420, defaultInterval = '
       <div className="relative w-full" style={{ height }}>
         <div ref={containerRef} className="absolute inset-0" />
         {empty && (
-          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-white/95">
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[color-mix(in_srgb,var(--vyntra-card)_95%,transparent)]">
             <div className="text-center">
               <p className="font-mono text-xs uppercase tracking-[0.18em] text-[var(--vyntra-faint)]">No trades yet</p>
               <p className="mt-2 text-sm text-[var(--vyntra-muted)]">Chart appears after the first buy</p>

@@ -62,6 +62,7 @@ async function uploadViaLocalProxy(file: File): Promise<string | null> {
       contentType: file.type || 'image/jpeg',
       dataBase64,
     }),
+    signal: AbortSignal.timeout(30_000),
   })
   if (!res.ok) return null
   const data = (await res.json()) as { url?: string }
@@ -80,6 +81,7 @@ async function uploadViaImgbb(file: File): Promise<string | null> {
   const res = await fetch('https://api.imgbb.com/1/upload', {
     method: 'POST',
     body: form,
+    signal: AbortSignal.timeout(30_000),
   })
   if (!res.ok) return null
   const data = (await res.json()) as { data?: { url?: string; display_url?: string } }
@@ -89,8 +91,8 @@ async function uploadViaImgbb(file: File): Promise<string | null> {
 
 /**
  * Compress then host the image.
- * Tries `/api/upload-image` (Vite middleware locally, Vercel serverless in prod),
- * then optional ImgBB key. Returns a public https URL for on-chain imageURI.
+ * Tries `/api/upload-image` (multi-host server), then optional ImgBB.
+ * Returns a public https URL for on-chain imageURI.
  */
 export async function uploadTokenImage(file: File): Promise<string> {
   const compressed = await compressTokenImage(file)
@@ -109,5 +111,7 @@ export async function uploadTokenImage(file: File): Promise<string> {
     // ignore
   }
 
-  throw new Error('Image upload failed. Try another file or paste an image URL.')
+  throw new Error(
+    'Image upload failed. Paste a public image URL below (https://…), then launch.',
+  )
 }

@@ -24,7 +24,7 @@ export function TokenCard({ launch }: Props) {
           e.stopPropagation()
           toggle(launch.id)
         }}
-        className={`absolute right-3 top-3 z-10 rounded-md border border-[var(--vyntra-border)] bg-white p-1.5 transition ${
+        className={`absolute right-3 top-3 z-10 rounded-md border border-[var(--vyntra-border)] bg-[var(--vyntra-card)] p-1.5 transition ${
           watched
             ? 'text-[var(--vyntra-fg)]'
             : 'text-[var(--vyntra-faint)] hover:text-[var(--vyntra-fg)]'
@@ -43,7 +43,7 @@ export function TokenCard({ launch }: Props) {
             )}
             {(launch.migrated || launch.graduated) && (
               <span className="absolute -bottom-1 -right-1 rounded bg-[var(--vyntra-success)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-white">
-                {launch.migrated ? 'BDEX' : 'LIVE'}
+                {launch.migrated ? 'LOCKED' : 'LIVE'}
               </span>
             )}
           </div>
@@ -73,7 +73,7 @@ export function TokenCard({ launch }: Props) {
               }
             >
               {launch.migrated
-                ? 'On BDEX'
+                ? 'LP locked'
                 : launch.graduated
                   ? 'Graduated'
                   : `${progress.toFixed(0)}% to graduate`}

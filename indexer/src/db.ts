@@ -1,7 +1,5 @@
-import Database from 'better-sqlite3'
-import fs from 'node:fs'
-import path from 'node:path'
-import { DB_PATH } from './config.js'
+import { createClient, type Client, type InArgs } from '@libsql/client'
+import { DATABASE_URL, DATABASE_AUTH_TOKEN } from './config.js'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -67,31 +65,74 @@ CREATE TABLE IF NOT EXISTS replies (
 );
 `
 
-let _db: Database.Database | null = null
+let _client: Client | null = null
+let _ready: Promise<void> | null = null
 
-export function getDb(): Database.Database {
-  if (_db) return _db
-  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true })
-  _db = new Database(DB_PATH)
-  _db.pragma('journal_mode = WAL')
-  _db.exec(SCHEMA)
-  return _db
+export function getClient(): Client {
+  if (_client) return _client
+  _client = createClient({
+    url: DATABASE_URL,
+    authToken: DATABASE_AUTH_TOKEN,
+  })
+  return _client
 }
 
-export function getMeta(key: string): string | null {
-  const row = getDb().prepare('SELECT value FROM meta WHERE key = ?').get(key) as
-    | { value: string }
-    | undefined
+/** Ensure schema exists (safe to call often). */
+export async function ensureSchema(): Promise<void> {
+  if (_ready) return _ready
+  _ready = (async () => {
+    const db = getClient()
+    // libsql execute supports multiple statements in some drivers; run chunked for safety
+    for (const stmt of SCHEMA.split(';').map((s) => s.trim()).filter(Boolean)) {
+      await db.execute(stmt)
+    }
+  })()
+  return _ready
+}
+
+export async function queryAll<T extends Record<string, unknown>>(
+  sql: string,
+  args: InArgs = [],
+): Promise<T[]> {
+  await ensureSchema()
+  const rs = await getClient().execute({ sql, args: args as InArgs })
+  return rs.rows.map((row) => {
+    const out: Record<string, unknown> = {}
+    for (const col of rs.columns) {
+      out[col] = row[col]
+    }
+    return out as T
+  })
+}
+
+export async function queryOne<T extends Record<string, unknown>>(
+  sql: string,
+  args: InArgs = [],
+): Promise<T | undefined> {
+  const rows = await queryAll<T>(sql, args)
+  return rows[0]
+}
+
+export async function execute(
+  sql: string,
+  args: InArgs = [],
+): Promise<{ rowsAffected: number }> {
+  await ensureSchema()
+  const rs = await getClient().execute({ sql, args: args as InArgs })
+  return { rowsAffected: rs.rowsAffected }
+}
+
+export async function getMeta(key: string): Promise<string | null> {
+  const row = await queryOne<{ value: string }>('SELECT value FROM meta WHERE key = ?', [key])
   return row?.value ?? null
 }
 
-export function setMeta(key: string, value: string) {
-  getDb()
-    .prepare(
-      `INSERT INTO meta(key, value) VALUES (?, ?)
-       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-    )
-    .run(key, value)
+export async function setMeta(key: string, value: string): Promise<void> {
+  await execute(
+    `INSERT INTO meta(key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, value],
+  )
 }
 
 export type LaunchRow = {

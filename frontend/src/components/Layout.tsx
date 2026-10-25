@@ -1,14 +1,16 @@
 import { useEffect, useState } from 'react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Link, NavLink, Outlet } from 'react-router-dom'
-import { Sparkles, Rocket, LayoutDashboard, Briefcase, ExternalLink } from 'lucide-react'
-import { isAppConfigured } from '../lib/config'
+import { Sparkles, Rocket, LayoutDashboard, Briefcase, ArrowRightLeft, ExternalLink } from 'lucide-react'
+import { isAppConfigured, VYNTRA_LOGO } from '../lib/config'
+import { ThemeToggle } from './ThemeToggle'
 
 const nav = [
-  { to: '/', label: 'Markets', icon: Sparkles },
+  { to: '/markets', label: 'Markets', icon: Sparkles },
   { to: '/spawn', label: 'Launch', icon: Rocket },
   { to: '/dashboard', label: 'Studio', icon: LayoutDashboard },
   { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
+  { to: '/bridge', label: 'Bridge', icon: ArrowRightLeft },
 ]
 
 const year = new Date().getFullYear()
@@ -35,9 +37,13 @@ export function Layout() {
         >
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:h-[4.25rem] sm:px-6 lg:px-8">
             <div className="flex items-center gap-7">
-              <Link to="/" className="flex items-center gap-2">
+              <Link to="/" className="flex items-center gap-2.5">
+                <img
+                  src={VYNTRA_LOGO}
+                  alt=""
+                  className="h-8 w-8 rounded-md object-cover ring-1 ring-[var(--vyntra-border)]"
+                />
                 <span className="font-display text-2xl tracking-tight text-[var(--vyntra-fg)]">Vyntra</span>
-                <span className="mt-1 font-mono text-[10px] text-[var(--vyntra-faint)]">TM</span>
               </Link>
 
               <nav className="hidden items-center gap-1 md:flex">
@@ -45,7 +51,7 @@ export function Layout() {
                   <NavLink
                     key={to}
                     to={to}
-                    end={to === '/'}
+                    end={to === '/markets'}
                     className={({ isActive }) => (isActive ? 'nav-link-active' : 'nav-link')}
                   >
                     <Icon className="h-4 w-4" />
@@ -55,11 +61,12 @@ export function Layout() {
               </nav>
             </div>
 
-            <div className="flex items-center gap-3">
-              <span className="chip-live">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <span className="chip-live hidden sm:inline-flex">
                 <span className="h-1.5 w-1.5 rounded-full bg-[var(--vyntra-success)]" />
                 Testnet
               </span>
+              <ThemeToggle />
               <ConnectButton showBalance={false} chainStatus="icon" accountStatus="address" />
             </div>
           </div>
@@ -69,7 +76,7 @@ export function Layout() {
               <NavLink
                 key={to}
                 to={to}
-                end={to === '/'}
+                end={to === '/markets'}
                 className={({ isActive }) => `${isActive ? 'nav-link-active' : 'nav-link'} shrink-0`}
               >
                 <Icon className="h-4 w-4" />
@@ -82,9 +89,9 @@ export function Layout() {
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
         {!isAppConfigured ? (
-          <div className="mx-auto max-w-lg rounded-xl border border-amber-500/30 bg-amber-50 px-6 py-12 text-center">
-            <p className="font-display text-3xl text-amber-950">Coming online</p>
-            <p className="mt-3 text-base leading-relaxed text-amber-900/80">
+          <div className="card mx-auto max-w-lg border-[rgba(245,158,11,0.35)] px-6 py-12 text-center">
+            <p className="font-display text-3xl">Coming online</p>
+            <p className="mt-3 text-base leading-relaxed text-[var(--vyntra-muted)]">
               Vyntra is warming up. Check back shortly.
             </p>
           </div>
@@ -93,11 +100,12 @@ export function Layout() {
         )}
       </main>
 
-      <footer className="mt-auto border-t border-[var(--vyntra-border)] bg-white/60">
+      <footer className="mt-auto border-t border-[var(--vyntra-border)] bg-[var(--vyntra-card)]/70">
         <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             <div className="sm:col-span-2 lg:col-span-1">
               <Link to="/" className="inline-flex items-center gap-2">
+                <img src={VYNTRA_LOGO} alt="" className="h-7 w-7 rounded-md object-cover" />
                 <span className="font-display text-xl tracking-tight">Vyntra</span>
               </Link>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-[var(--vyntra-muted)]">
@@ -112,7 +120,7 @@ export function Layout() {
               </p>
               <ul className="mt-4 space-y-2.5 text-sm text-[var(--vyntra-muted)]">
                 <li>
-                  <Link to="/" className="transition hover:text-[var(--vyntra-fg)]">
+                  <Link to="/markets" className="transition hover:text-[var(--vyntra-fg)]">
                     Markets
                   </Link>
                 </li>
@@ -129,6 +137,16 @@ export function Layout() {
                 <li>
                   <Link to="/portfolio" className="transition hover:text-[var(--vyntra-fg)]">
                     Portfolio
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/bridge" className="transition hover:text-[var(--vyntra-fg)]">
+                    Bridge
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/vyntra" className="transition hover:text-[var(--vyntra-fg)]">
+                    $VYNTRA
                   </Link>
                 </li>
               </ul>

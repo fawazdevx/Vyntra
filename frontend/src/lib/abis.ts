@@ -663,3 +663,77 @@ export const erc20Abi = [
     outputs: [{ name: '', type: 'string' }],
   },
 ] as const
+
+export const vyntraMarketAbi = [
+  {
+    type: 'event',
+    name: 'BuyVyntra',
+    inputs: [
+      { name: 'buyer', type: 'address', indexed: true },
+      { name: 'botIn', type: 'uint256', indexed: false },
+      { name: 'vyntraOut', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'SellVyntra',
+    inputs: [
+      { name: 'seller', type: 'address', indexed: true },
+      { name: 'vyntraIn', type: 'uint256', indexed: false },
+      { name: 'botOut', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'Seeded',
+    inputs: [
+      { name: 'botAmount', type: 'uint256', indexed: false },
+      { name: 'vyntraAmount', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'reserveBot',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'reserveVyntra',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'quoteBuyVyntra',
+    stateMutability: 'view',
+    inputs: [{ name: 'botIn', type: 'uint256' }],
+    outputs: [{ name: 'vyntraOut', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'quoteSellVyntra',
+    stateMutability: 'view',
+    inputs: [{ name: 'vyntraIn', type: 'uint256' }],
+    outputs: [{ name: 'botOut', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'buyVyntra',
+    stateMutability: 'payable',
+    inputs: [{ name: 'minVyntraOut', type: 'uint256' }],
+    outputs: [{ name: 'vyntraOut', type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'sellVyntra',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'vyntraIn', type: 'uint256' },
+      { name: 'minBotOut', type: 'uint256' },
+    ],
+    outputs: [{ name: 'botOut', type: 'uint256' }],
+  },
+] as const

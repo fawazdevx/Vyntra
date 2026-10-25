@@ -1,4 +1,4 @@
-import { getDb } from './db.js'
+import { queryAll } from './db.js'
 
 export type Candle = {
   time: number
@@ -11,13 +11,12 @@ export type Candle = {
 }
 
 /** Build OHLCV candles from indexed trades. intervalSec: 60 | 300 | 900 | 3600 | 86400 */
-export function buildOhlcv(launchId: number, intervalSec: number, limit = 500): Candle[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT timestamp, price, bot_amount AS volume
-       FROM trades WHERE launch_id = ? ORDER BY timestamp ASC, id ASC`,
-    )
-    .all(launchId) as Array<{ timestamp: number; price: number; volume: number }>
+export async function buildOhlcv(launchId: number, intervalSec: number, limit = 500): Promise<Candle[]> {
+  const rows = await queryAll<{ timestamp: number; price: number; volume: number }>(
+    `SELECT timestamp, price, bot_amount AS volume
+     FROM trades WHERE launch_id = ? ORDER BY timestamp ASC, id ASC`,
+    [launchId],
+  )
 
   if (rows.length === 0) return []
 

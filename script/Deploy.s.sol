@@ -30,7 +30,7 @@ import {VyntraKeeper} from "../src/VyntraKeeper.sol";
 contract Deploy is Script {
     function run() external {
         address opsTreasury = vm.envOr("TREASURY", msg.sender);
-        uint256 threshold = vm.envOr("GRADUATION_THRESHOLD", uint256(1 ether));
+        uint256 threshold = vm.envOr("GRADUATION_THRESHOLD", uint256(100 ether));
         // Seed VYNTRA/BOT market for buybacks
         uint256 botSeed = vm.envOr("BOT_SEED", uint256(5 ether));
         uint256 vyntraSeed = vm.envOr("VYNTRA_SEED", uint256(50_000_000 ether));

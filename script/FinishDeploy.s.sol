@@ -27,7 +27,7 @@ contract FinishDeploy is Script {
     function run() external {
         address vyntraAddr = vm.envAddress("EXISTING_VYNTRA");
         address opsTreasury = vm.envOr("TREASURY", msg.sender);
-        uint256 threshold = vm.envOr("GRADUATION_THRESHOLD", uint256(1 ether));
+        uint256 threshold = vm.envOr("GRADUATION_THRESHOLD", uint256(100 ether));
         uint256 botSeed = vm.envOr("BOT_SEED", uint256(2 ether));
         uint256 vyntraSeed = vm.envOr("VYNTRA_SEED", uint256(50_000_000 ether));
         address bdexRouter = vm.envOr("BDEX_ROUTER", _defaultBdexRouter(block.chainid));

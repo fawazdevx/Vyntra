@@ -1,4 +1,4 @@
-import { getDb } from './db.js'
+import { queryAll } from './db.js'
 
 export type PortfolioPosition = {
   launchId: number
@@ -68,11 +68,11 @@ function isAddress(addr: string) {
 }
 
 /** Average-cost realized PnL + mark-to-last-trade unrealized. */
-export function getPortfolio(address: string): {
+export async function getPortfolio(address: string): Promise<{
   address: string
   positions: PortfolioPosition[]
   summary: PortfolioSummary
-} {
+}> {
   const wallet = normalizeAddr(address)
   if (!isAddress(wallet)) {
     return {
@@ -92,16 +92,7 @@ export function getPortfolio(address: string): {
     }
   }
 
-  const trades = getDb()
-    .prepare(
-      `SELECT t.launch_id, t.side, t.bot_amount, t.token_amount, t.price, t.timestamp,
-              l.token, l.curve, l.name, l.symbol, l.image_uri, l.creator, l.graduated, l.migrated
-       FROM trades t
-       JOIN launches l ON l.id = t.launch_id
-       WHERE LOWER(t.trader) = ?
-       ORDER BY t.timestamp ASC, t.id ASC`,
-    )
-    .all(wallet) as Array<{
+  const trades = await queryAll<{
     launch_id: number
     side: 'buy' | 'sell'
     bot_amount: number
@@ -116,7 +107,15 @@ export function getPortfolio(address: string): {
     creator: string
     graduated: number
     migrated: number
-  }>
+  }>(
+    `SELECT t.launch_id, t.side, t.bot_amount, t.token_amount, t.price, t.timestamp,
+            l.token, l.curve, l.name, l.symbol, l.image_uri, l.creator, l.graduated, l.migrated
+     FROM trades t
+     JOIN launches l ON l.id = t.launch_id
+     WHERE LOWER(t.trader) = ?
+     ORDER BY t.timestamp ASC, t.id ASC`,
+    [wallet],
+  )
 
   type Acc = {
     launchId: number
@@ -194,14 +193,12 @@ export function getPortfolio(address: string): {
     }
   }
 
-  const lastPrices = getDb()
-    .prepare(
-      `SELECT launch_id, price FROM trades t
-       WHERE t.id IN (
-         SELECT MAX(id) FROM trades GROUP BY launch_id
-       )`,
-    )
-    .all() as Array<{ launch_id: number; price: number }>
+  const lastPrices = await queryAll<{ launch_id: number; price: number }>(
+    `SELECT launch_id, price FROM trades t
+     WHERE t.id IN (
+       SELECT MAX(id) FROM trades GROUP BY launch_id
+     )`,
+  )
   const priceMap = new Map(lastPrices.map((r) => [r.launch_id, r.price]))
 
   const positions: PortfolioPosition[] = [...byLaunch.values()]
@@ -252,25 +249,15 @@ export function getPortfolio(address: string): {
   return { address: wallet, positions, summary }
 }
 
-export function getWalletTrades(
+export async function getWalletTrades(
   address: string,
   limit = 200,
-): { address: string; trades: PortfolioTrade[] } {
+): Promise<{ address: string; trades: PortfolioTrade[] }> {
   const wallet = normalizeAddr(address)
   if (!isAddress(wallet)) return { address: wallet, trades: [] }
 
   const lim = Math.min(Math.max(limit, 1), 2000)
-  const rows = getDb()
-    .prepare(
-      `SELECT t.launch_id, t.side, t.bot_amount, t.token_amount, t.price, t.mcap, t.fee,
-              t.timestamp, t.block_number, t.tx_hash, t.trader, l.symbol, l.name
-       FROM trades t
-       JOIN launches l ON l.id = t.launch_id
-       WHERE LOWER(t.trader) = ?
-       ORDER BY t.timestamp DESC, t.id DESC
-       LIMIT ?`,
-    )
-    .all(wallet, lim) as Array<{
+  const rows = await queryAll<{
     launch_id: number
     side: 'buy' | 'sell'
     bot_amount: number
@@ -284,7 +271,16 @@ export function getWalletTrades(
     trader: string
     symbol: string
     name: string
-  }>
+  }>(
+    `SELECT t.launch_id, t.side, t.bot_amount, t.token_amount, t.price, t.mcap, t.fee,
+            t.timestamp, t.block_number, t.tx_hash, t.trader, l.symbol, l.name
+     FROM trades t
+     JOIN launches l ON l.id = t.launch_id
+     WHERE LOWER(t.trader) = ?
+     ORDER BY t.timestamp DESC, t.id DESC
+     LIMIT ?`,
+    [wallet, lim],
+  )
 
   return {
     address: wallet,

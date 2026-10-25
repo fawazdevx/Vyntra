@@ -71,8 +71,11 @@ export function formatUserError(err: unknown, fallback = 'Something went wrong. 
   if (m.includes('maxbuy') || m.includes('antisnipe') || m.includes('anti-snipe')) {
     return 'Early buy limit — wait a moment or buy a smaller amount.'
   }
+  if (m.includes('migrated') || m.includes('0xe0551aa9')) {
+    return 'This curve already migrated. Import the token on BDEX (mainnet) — Vyntra buy/sell are closed for this launch.'
+  }
   if (m.includes('graduatedalready') || m.includes('curve closed')) {
-    return 'This market has graduated. Trading is still open here.'
+    return 'This market has graduated. Trading stays open on Vyntra.'
   }
   if (m.includes('allowance') || m.includes('transfer amount exceeds')) {
     return 'Token approval needed — approve and try again.'

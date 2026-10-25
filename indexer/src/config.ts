@@ -30,16 +30,26 @@ export const BOARD_ADDRESS = optionalAddress(
   process.env.BOARD_ADDRESS || process.env.VITE_BOARD_ADDRESS,
 )
 
-export const DB_PATH =
-  process.env.INDEXER_DB_PATH || path.join(__dirname, '..', 'data', 'vyntra.sqlite')
+/** Turso/libsql URL. Local default: file DB under indexer/data. */
+export const DATABASE_URL =
+  process.env.TURSO_DATABASE_URL ||
+  process.env.LIBSQL_URL ||
+  process.env.INDEXER_DATABASE_URL ||
+  `file:${path.join(__dirname, '..', 'data', 'vyntra.sqlite')}`
+
+export const DATABASE_AUTH_TOKEN =
+  process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || undefined
 
 export const API_PORT = Number(process.env.INDEXER_API_PORT || 8787)
 export const POLL_MS = Number(process.env.INDEXER_POLL_MS || 8_000)
 export const CONFIRMATIONS = Number(process.env.INDEXER_CONFIRMATIONS || 1)
-/** Max blocks per eth_getLogs chunk (RPC providers vary). */
 export const LOG_CHUNK = Number(process.env.INDEXER_LOG_CHUNK || 2_000)
-
 export const START_BLOCK = BigInt(process.env.INDEXER_START_BLOCK || '0')
+
+/** Skip RPC sync if last sync was within this many seconds (Vercel request path). */
+export const SYNC_STALE_SEC = Number(process.env.INDEXER_SYNC_STALE_SEC || 20)
+
+export const CRON_SECRET = process.env.CRON_SECRET || ''
 
 export function requireFactory(): Address {
   if (!FACTORY_ADDRESS) {
