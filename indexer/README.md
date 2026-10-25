@@ -63,7 +63,7 @@ Do not set `INDEXER_START_BLOCK` to `0` on a fresh mainnet database unless a ful
 | Framework Preset | Other |
 | Build Command | `npm run vercel-build` |
 | Install Command | `npm install` |
-| Output Directory | Clear any explicit directory such as `public`; the indexer deploys `api/` functions, not a static site. `vercel.json` sets this to `null`. |
+| Output Directory | `public` (contains a small API status page; API routes remain under `api/`) |
 
 After deploy, `/api/health` must return JSON in under 1s. If it still times out, the Root Directory is probably the repo root instead of `indexer`.
 
