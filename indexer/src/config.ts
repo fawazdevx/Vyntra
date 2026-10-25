@@ -1,7 +1,15 @@
-import 'dotenv/config'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { getAddress, type Address, type Hex } from 'viem'
+
+if (!process.env.VERCEL) {
+  try {
+    createRequire(import.meta.url)('dotenv').config()
+  } catch {
+    // optional in prod bundles
+  }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 

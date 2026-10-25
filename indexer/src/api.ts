@@ -14,7 +14,6 @@ import { ensureSchema, getMeta, queryAll, queryOne, type LaunchRow, type TradeRo
 import { buildOhlcv } from './ohlcv.js'
 import { getHolders, getSnipers } from './analytics.js'
 import { getPortfolio, getWalletTrades } from './portfolio.js'
-import { syncOnce } from './sync.js'
 
 function launchJson(row: LaunchRow) {
   return {
@@ -58,6 +57,7 @@ async function maybeSync(force = false) {
   }
   syncInFlight = (async () => {
     try {
+      const { syncOnce } = await import('./sync.js')
       await syncOnce()
     } catch (e) {
       console.error('[indexer] maybeSync error', e)
@@ -74,41 +74,18 @@ export function createApp(opts: { basePath?: string } = {}) {
 
   app.get('/', (c) => c.redirect('/api/health'))
 
-  app.get('/health', async (c) => {
-    // Fast path — do not block on chain sync (Hobby timeouts are short).
-    let lastBlock: string | null = null
-    let lastSyncAt: string | null = null
-    let dbOk = false
-    let dbError: string | null = null
-    try {
-      await Promise.race([
-        (async () => {
-          await ensureSchema()
-          lastBlock = await getMeta('last_block')
-          lastSyncAt = await getMeta('last_sync_at')
-          dbOk = true
-        })(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('db_timeout_3s')), 3000),
-        ),
-      ])
-    } catch (e) {
-      dbError = e instanceof Error ? e.message : String(e)
-      console.error('[indexer] health db', dbError)
-    }
-    return c.json({
+  // Prefer api/health.ts on Vercel (no heavy imports). This is the local/dev fallback.
+  app.get('/health', (c) =>
+    c.json({
       ok: true,
-      dbOk,
-      dbError,
+      service: 'vyntra-indexer',
       chainId: CHAIN_ID,
       factory: FACTORY_ADDRESS ?? null,
       board: BOARD_ADDRESS ?? null,
       rpc: RPC_URL,
-      lastBlock,
-      lastSyncAt,
-      ready: Boolean(FACTORY_ADDRESS) && dbOk,
-    })
-  })
+      ready: Boolean(FACTORY_ADDRESS),
+    }),
+  )
 
   app.use('/v1/*', async (c, next) => {
     await ensureSchema()
@@ -126,6 +103,7 @@ export function createApp(opts: { basePath?: string } = {}) {
     }
     try {
       await ensureSchema()
+      const { syncOnce } = await import('./sync.js')
       const r = await syncOnce()
       return c.json({ ok: true, ...r, from: r.from.toString(), to: r.to.toString() })
     } catch (e) {

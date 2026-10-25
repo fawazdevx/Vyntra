@@ -110,3 +110,13 @@ On Hobby you do **not** need Pro for a working indexer — request traffic drive
 | GET | `/v1/wallets/:address/trades` | Wallet trades |
 
 On Vercel, prefix every path with `/api` (because of `basePath: '/api'`).
+
+
+## Troubleshooting Vercel timeouts
+
+If `/api/health` times out:
+
+1. Redeploy after pulling latest (`api/health.ts` is a tiny function with no DB/viem).
+2. Confirm env on the **indexer** project: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `FACTORY_ADDRESS`, `INDEXER_RPC_URL`.
+3. `hasTursoUrl: false` in the health JSON means Turso is not configured — `/api/v1/*` will fail until it is.
+4. Root Directory of the Vercel project must be `indexer`.
