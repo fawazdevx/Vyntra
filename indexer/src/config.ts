@@ -31,14 +31,23 @@ export const BOARD_ADDRESS = optionalAddress(
 )
 
 /** Turso/libsql URL. Local default: file DB under indexer/data. */
+const isVercel = Boolean(process.env.VERCEL)
+
+const localFileUrl = `file:${path.join(__dirname, '..', 'data', 'vyntra.sqlite')}`
+
 export const DATABASE_URL =
   process.env.TURSO_DATABASE_URL ||
   process.env.LIBSQL_URL ||
   process.env.INDEXER_DATABASE_URL ||
-  `file:${path.join(__dirname, '..', 'data', 'vyntra.sqlite')}`
+  (isVercel ? '' : localFileUrl)
 
 export const DATABASE_AUTH_TOKEN =
   process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN || undefined
+
+/** True when a remote Turso/libsql URL is configured (required on Vercel). */
+export const hasRemoteDatabase = Boolean(
+  DATABASE_URL && !DATABASE_URL.startsWith('file:'),
+)
 
 export const API_PORT = Number(process.env.INDEXER_API_PORT || 8787)
 export const POLL_MS = Number(process.env.INDEXER_POLL_MS || 8_000)

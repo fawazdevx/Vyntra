@@ -1,5 +1,5 @@
 import { createClient, type Client, type InArgs } from '@libsql/client'
-import { DATABASE_URL, DATABASE_AUTH_TOKEN } from './config.js'
+import { DATABASE_URL, DATABASE_AUTH_TOKEN, hasRemoteDatabase } from './config.js'
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS meta (
@@ -70,6 +70,16 @@ let _ready: Promise<void> | null = null
 
 export function getClient(): Client {
   if (_client) return _client
+  if (!DATABASE_URL) {
+    throw new Error(
+      'Database URL missing. On Vercel set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN.',
+    )
+  }
+  if (process.env.VERCEL && !hasRemoteDatabase) {
+    throw new Error(
+      'file: SQLite is not supported on Vercel. Set TURSO_DATABASE_URL + TURSO_AUTH_TOKEN.',
+    )
+  }
   _client = createClient({
     url: DATABASE_URL,
     authToken: DATABASE_AUTH_TOKEN,

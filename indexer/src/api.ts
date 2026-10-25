@@ -79,17 +79,27 @@ export function createApp(opts: { basePath?: string } = {}) {
     let lastBlock: string | null = null
     let lastSyncAt: string | null = null
     let dbOk = false
+    let dbError: string | null = null
     try {
-      await ensureSchema()
-      lastBlock = await getMeta('last_block')
-      lastSyncAt = await getMeta('last_sync_at')
-      dbOk = true
+      await Promise.race([
+        (async () => {
+          await ensureSchema()
+          lastBlock = await getMeta('last_block')
+          lastSyncAt = await getMeta('last_sync_at')
+          dbOk = true
+        })(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('db_timeout_3s')), 3000),
+        ),
+      ])
     } catch (e) {
-      console.error('[indexer] health db', e)
+      dbError = e instanceof Error ? e.message : String(e)
+      console.error('[indexer] health db', dbError)
     }
     return c.json({
       ok: true,
       dbOk,
+      dbError,
       chainId: CHAIN_ID,
       factory: FACTORY_ADDRESS ?? null,
       board: BOARD_ADDRESS ?? null,
