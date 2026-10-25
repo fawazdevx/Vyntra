@@ -1,14 +1,31 @@
 export const config = { runtime: 'edge' }
 
 export default async function handler(req: Request) {
+  const url = new URL(req.url)
+  if (!url.pathname.endsWith('/sync') && !url.pathname.endsWith('/cron/sync')) {
+    // /api/cron/sync
+  }
+  const auth = req.headers.get('authorization') || ''
+  const secret = process.env.CRON_SECRET || ''
+  if (secret && auth !== `Bearer ${secret}`) {
+    // Vercel Cron does not send Bearer by default on Hobby — allow if CRON_SECRET unset
+    if (secret) return new Response('Unauthorized', { status: 401 })
+  }
   try {
-    const { handle } = await import('hono/vercel')
-    const { createApp } = await import('../../src/api.js')
-    const app = createApp({ basePath: '/api' })
-    return handle(app)(req)
+    const { ensureSchema } = await import('../../src/db.js')
+    const { syncOnce } = await import('../../src/sync.js')
+    await ensureSchema()
+    const r = await syncOnce()
+    return Response.json({
+      ok: true,
+      from: r.from.toString(),
+      to: r.to.toString(),
+      launches: r.launches,
+      trades: r.trades,
+    })
   } catch (e) {
     return Response.json(
-      { error: 'boot_failed', detail: e instanceof Error ? e.message : String(e) },
+      { ok: false, error: e instanceof Error ? e.message : String(e) },
       { status: 500 },
     )
   }
