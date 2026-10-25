@@ -9,7 +9,7 @@ export const isIndexerConfigured = Boolean(BASE)
 async function getJson<T>(path: string): Promise<T | null> {
   if (!BASE) return null
   try {
-    const res = await fetch(`${BASE}${path}`, { signal: AbortSignal.timeout(8_000) })
+    const res = await fetch(`${BASE}${path}`, { signal: AbortSignal.timeout(20_000) })
     if (!res.ok) return null
     return (await res.json()) as T
   } catch {

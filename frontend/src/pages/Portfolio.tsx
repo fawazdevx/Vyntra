@@ -69,7 +69,7 @@ export function Portfolio() {
         if (cancelled) return
         setPortfolio(p)
         setHistory(t)
-        if (!p) setError('Indexer portfolio unavailable')
+        if (!p) setError("Couldn't load your portfolio right now. Please try again in a moment.")
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -92,9 +92,9 @@ export function Portfolio() {
     return (
       <div className="card mx-auto max-w-lg space-y-3 px-6 py-16 text-center">
         <Briefcase className="mx-auto h-8 w-8 text-[var(--vyntra-faint)]" />
-        <p className="font-display text-2xl">Portfolio needs the indexer</p>
+        <p className="font-display text-2xl">Portfolio unavailable</p>
         <p className="text-base text-[var(--vyntra-muted)]">
-          Set <span className="font-mono">VITE_INDEXER_URL</span> so trade history and PnL can load.
+          Trade history and PnL are temporarily unavailable. Please try again later.
         </p>
       </div>
     )
@@ -164,7 +164,31 @@ export function Portfolio() {
       {loading && !portfolio ? (
         <div className="card px-4 py-12 text-center text-[var(--vyntra-muted)]">Loading portfolio…</div>
       ) : error && !portfolio ? (
-        <div className="card px-4 py-12 text-center text-[var(--vyntra-muted)]">{error}</div>
+        <div className="card space-y-3 px-4 py-12 text-center">
+          <p className="text-[var(--vyntra-muted)]">{error}</p>
+          <button
+            type="button"
+            className="btn-ghost mx-auto"
+            onClick={() => {
+              setError(null)
+              setLoading(true)
+              Promise.all([
+                fetchPortfolioFromIndexer(address),
+                fetchWalletTradesFromIndexer(address, 100),
+              ])
+                .then(([p, t]) => {
+                  setPortfolio(p)
+                  setHistory(t)
+                  if (!p) {
+                    setError("Couldn't load your portfolio right now. Please try again in a moment.")
+                  }
+                })
+                .finally(() => setLoading(false))
+            }}
+          >
+            Try again
+          </button>
+        </div>
       ) : tab === 'positions' ? (
         <div className="space-y-4">
           <PositionTable title="Open positions" rows={openPositions} empty="No open positions yet" />

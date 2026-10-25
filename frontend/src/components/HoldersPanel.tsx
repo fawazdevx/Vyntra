@@ -76,7 +76,7 @@ export function HoldersPanel({ launchId, symbol, trades }: Props) {
         if (cancelled) return
         setHolders(h)
         setSnipers(s)
-        if (!h && !s) setError('Indexer analytics unavailable')
+        if (!h && !s) setError("Couldn't load holders right now. Please try again shortly.")
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
