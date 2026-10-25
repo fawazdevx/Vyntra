@@ -1,4 +1,5 @@
 import { qAll, qOne } from '../../src/edge-db.js'
+import { jsonCors, optionsOk, withCors } from '../../src/edge-cors.js'
 
 export const config = { runtime: 'edge' }
 
@@ -34,6 +35,7 @@ function launchJson(row: Record<string, unknown>) {
 }
 
 export default async function handler(req: Request) {
+  if (req.method === 'OPTIONS') return optionsOk()
   try {
     const u = new URL(req.url)
     const kind = u.searchParams.get('kind') || ''
@@ -43,8 +45,8 @@ export default async function handler(req: Request) {
 
     if (kind === 'launch') {
       const row = await qOne('SELECT * FROM launches WHERE id = ?', [id])
-      if (!row) return Response.json({ error: 'not_found' }, { status: 404 })
-      return Response.json({ launch: launchJson(row) })
+      if (!row) return jsonCors({ error: 'not_found' }, { status: 404 })
+      return jsonCors({ launch: launchJson(row) })
     }
 
     if (kind === 'trades') {
@@ -71,7 +73,7 @@ export default async function handler(req: Request) {
         })
         last = time
       }
-      return Response.json({ trades })
+      return jsonCors({ trades })
     }
 
     if (kind === 'ohlcv') {
@@ -108,12 +110,12 @@ export default async function handler(req: Request) {
         }
       }
       if (cur) candles.push(cur)
-      return Response.json({ interval: sec, candles: candles.slice(-Math.min(limit, 2000)) })
+      return jsonCors({ interval: sec, candles: candles.slice(-Math.min(limit, 2000)) })
     }
 
     if (kind === 'holders') {
       if (!(await qOne('SELECT id FROM launches WHERE id = ?', [id]))) {
-        return Response.json({ error: 'not_found' }, { status: 404 })
+        return jsonCors({ error: 'not_found' }, { status: 404 })
       }
       const rows = await qAll(
         `SELECT trader AS address,
@@ -147,7 +149,7 @@ export default async function handler(req: Request) {
         .sort((a, b) => b.heldToken - a.heldToken)
       const totalHeld = holders.reduce((s, h) => s + h.heldToken, 0)
       const lim = Math.min(limit, 500)
-      return Response.json({
+      return jsonCors({
         launchId: id,
         source: 'curve_trades',
         holders: holders.slice(0, lim).map((h, i) => ({
@@ -161,7 +163,7 @@ export default async function handler(req: Request) {
 
     if (kind === 'snipers') {
       if (!(await qOne('SELECT id FROM launches WHERE id = ?', [id]))) {
-        return Response.json({ error: 'not_found' }, { status: 404 })
+        return jsonCors({ error: 'not_found' }, { status: 404 })
       }
       const buys = await qAll(
         `SELECT trader, timestamp, block_number FROM trades
@@ -195,7 +197,7 @@ export default async function handler(req: Request) {
         })
         if (snipers.length >= lim) break
       }
-      return Response.json({
+      return jsonCors({
         launchId: id,
         source: 'curve_trades',
         snipers,
@@ -212,16 +214,16 @@ export default async function handler(req: Request) {
          FROM replies WHERE launch_id = ? ORDER BY reply_index DESC LIMIT 100`,
         [id],
       )
-      return Response.json({ replies: rows })
+      return jsonCors({ replies: rows })
     }
 
     if (kind === 'portfolio') {
       if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
-        return Response.json({ error: 'invalid_address' }, { status: 400 })
+        return jsonCors({ error: 'invalid_address' }, { status: 400 })
       }
       const { getPortfolio } = await import('../../src/portfolio.js')
       const data = await getPortfolio(address)
-      return Response.json({
+      return jsonCors({
         ...data,
         source: 'curve_trades',
         note: 'PnL uses average cost basis; mark price is last curve trade.',
@@ -230,15 +232,15 @@ export default async function handler(req: Request) {
 
     if (kind === 'wallet_trades') {
       if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
-        return Response.json({ error: 'invalid_address' }, { status: 400 })
+        return jsonCors({ error: 'invalid_address' }, { status: 400 })
       }
       const { getWalletTrades } = await import('../../src/portfolio.js')
-      return Response.json(await getWalletTrades(address, Math.min(limit, 2000)))
+      return jsonCors(await getWalletTrades(address, Math.min(limit, 2000)))
     }
 
-    return Response.json({ error: 'unknown_kind', kind }, { status: 400 })
+    return jsonCors({ error: 'unknown_kind', kind }, { status: 400 })
   } catch (e) {
-    return Response.json(
+    return jsonCors(
       { error: e instanceof Error ? e.message : String(e) },
       { status: 500 },
     )

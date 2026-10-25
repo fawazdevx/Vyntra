@@ -1,12 +1,14 @@
+import { jsonCors, optionsOk } from '../../src/edge-cors.js'
 import { createClient } from '@libsql/client/web'
 
 export const config = { runtime: 'edge' }
 
-export default async function handler() {
+export default async function handler(req?: Request) {
+  if (req?.method === 'OPTIONS') return optionsOk()
   const url = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || ''
   const authToken = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN
   if (!url || url.startsWith('file:')) {
-    return Response.json(
+    return jsonCors(
       { error: 'turso_unconfigured', hasUrl: Boolean(url) },
       { status: 503 },
     )
@@ -30,7 +32,7 @@ export default async function handler() {
     for (const r of meta.rows) {
       metaMap[String(r.key)] = String(r.value)
     }
-    return Response.json({
+    return jsonCors({
       launches: Number(row.launches || 0),
       onCurve: Number(row.on_curve || 0),
       graduated: Number(row.graduated || 0),
@@ -41,7 +43,7 @@ export default async function handler() {
       lastSyncAt: metaMap.last_sync_at ?? null,
     })
   } catch (e) {
-    return Response.json(
+    return jsonCors(
       { error: 'query_failed', detail: e instanceof Error ? e.message : String(e) },
       { status: 500 },
     )

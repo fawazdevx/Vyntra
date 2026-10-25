@@ -1,3 +1,4 @@
+import { jsonCors, optionsOk } from '../../../src/edge-cors.js'
 import { createClient } from '@libsql/client/web'
 
 export const config = { runtime: 'edge' }
@@ -28,10 +29,11 @@ function launchJson(row: Record<string, unknown>) {
 }
 
 export default async function handler(req: Request) {
+  if (req.method === 'OPTIONS') return optionsOk()
   const url = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || ''
   const authToken = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN
   if (!url || url.startsWith('file:')) {
-    return Response.json({ error: 'turso_unconfigured' }, { status: 503 })
+    return jsonCors({ error: 'turso_unconfigured' }, { status: 503 })
   }
   const u = new URL(req.url)
   const sort = u.searchParams.get('sort') || 'trending'
@@ -54,9 +56,9 @@ export default async function handler(req: Request) {
       for (const col of rs.columns) row[col] = r[col]
       return launchJson(row)
     })
-    return Response.json({ launches })
+    return jsonCors({ launches })
   } catch (e) {
-    return Response.json(
+    return jsonCors(
       { error: 'query_failed', detail: e instanceof Error ? e.message : String(e) },
       { status: 500 },
     )

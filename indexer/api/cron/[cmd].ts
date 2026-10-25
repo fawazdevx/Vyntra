@@ -1,6 +1,8 @@
+import { jsonCors, optionsOk } from '../../src/edge-cors.js'
 export const config = { runtime: 'edge' }
 
 export default async function handler(req: Request) {
+  if (req.method === 'OPTIONS') return optionsOk()
   const url = new URL(req.url)
   if (!url.pathname.endsWith('/sync') && !url.pathname.endsWith('/cron/sync')) {
     // /api/cron/sync
@@ -16,7 +18,7 @@ export default async function handler(req: Request) {
     const { syncOnce } = await import('../../src/sync.js')
     await ensureSchema()
     const r = await syncOnce()
-    return Response.json({
+    return jsonCors({
       ok: true,
       from: r.from.toString(),
       to: r.to.toString(),
@@ -24,7 +26,7 @@ export default async function handler(req: Request) {
       trades: r.trades,
     })
   } catch (e) {
-    return Response.json(
+    return jsonCors(
       { ok: false, error: e instanceof Error ? e.message : String(e) },
       { status: 500 },
     )
