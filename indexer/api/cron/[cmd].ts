@@ -1,11 +1,7 @@
 import { handle } from 'hono/vercel'
-import { createApp } from '../src/api.js'
+import { createApp } from '../../src/api.js'
 
-export const config = {
-  runtime: 'nodejs',
-  maxDuration: 60,
-}
+export const config = { runtime: 'edge' }
 
 const app = createApp({ basePath: '/api' })
-
 export default handle(app)

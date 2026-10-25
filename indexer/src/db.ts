@@ -1,4 +1,4 @@
-import { createClient, type Client, type InArgs } from '@libsql/client'
+import { createClient, type Client, type InArgs } from '@libsql/client/web'
 import { DATABASE_URL, DATABASE_AUTH_TOKEN, hasRemoteDatabase } from './config.js'
 
 const SCHEMA = `

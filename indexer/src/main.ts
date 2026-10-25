@@ -1,6 +1,6 @@
 import { API_PORT, POLL_MS, FACTORY_ADDRESS } from './config.js'
 import { ensureSchema } from './db.js'
-import { startApi } from './api.js'
+import { startApi } from './serve-local.js'
 import { runLoop } from './sync.js'
 
 await ensureSchema()

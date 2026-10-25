@@ -1,4 +1,3 @@
-import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import {
@@ -88,7 +87,16 @@ export function createApp(opts: { basePath?: string } = {}) {
   )
 
   app.use('/v1/*', async (c, next) => {
-    await ensureSchema()
+    try {
+      await Promise.race([
+        ensureSchema(),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('schema_timeout')), 2500)),
+      ])
+    } catch (e) {
+      console.error('[indexer] schema', e)
+      return c.json({ error: 'db_unavailable', detail: String(e) }, 503)
+    }
+    // Non-blocking refresh; daily cron is the backup on Hobby.
     void maybeSync(false)
     await next()
   })
@@ -270,12 +278,5 @@ export function createApp(opts: { basePath?: string } = {}) {
     return c.json({ replies: rows })
   })
 
-  return app
-}
-
-export function startApi(port = API_PORT) {
-  const app = createApp()
-  console.log(`[indexer-api] http://127.0.0.1:${port} (factory ${FACTORY_ADDRESS ?? 'unset'})`)
-  serve({ fetch: app.fetch, port, hostname: '0.0.0.0' })
   return app
 }
