@@ -153,11 +153,15 @@ export function useLaunches() {
     enabled: (Boolean(publicClient) && isAppConfigured) || isIndexerConfigured,
     refetchInterval: 12_000,
     queryFn: async () => {
-      if (isIndexerConfigured) {
-        const indexed = await fetchLaunchesFromIndexer()
-        if (indexed) return indexed
+      // Indexer can lag (Hobby cron is daily). Always merge missing on-chain IDs from RPC
+      // so Markets shows a brand-new spawn immediately after create/buy.
+      const indexed =
+        isIndexerConfigured ? await fetchLaunchesFromIndexer() : null
+
+      if (!publicClient || !isAppConfigured) {
+        return (indexed ?? []) as LaunchView[]
       }
-      if (!publicClient || !isAppConfigured) return [] as LaunchView[]
+
       const count = await publicClient.readContract({
         address: FACTORY_ADDRESS,
         abi: spawnFactoryAbi,
@@ -166,9 +170,18 @@ export function useLaunches() {
       const n = Number(count)
       if (n === 0) return [] as LaunchView[]
 
-      const ids = Array.from({ length: n }, (_, i) => BigInt(i + 1))
-      const launches = await Promise.all(ids.map((id) => fetchLaunch(publicClient, id)))
-      return launches.sort((a, b) => b.createdAt - a.createdAt)
+      const byId = new Map<number, LaunchView>()
+      for (const launch of indexed ?? []) byId.set(launch.id, launch)
+
+      const missing = Array.from({ length: n }, (_, i) => i + 1).filter((id) => !byId.has(id))
+      if (missing.length > 0) {
+        const fetched = await Promise.all(
+          missing.map((id) => fetchLaunch(publicClient, BigInt(id))),
+        )
+        for (const launch of fetched) byId.set(launch.id, launch)
+      }
+
+      return Array.from(byId.values()).sort((a, b) => b.createdAt - a.createdAt)
     },
   })
 

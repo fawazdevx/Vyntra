@@ -5,9 +5,12 @@ try {
   // optional
 }
 
-import { POLL_MS } from './config.js'
-import { ensureSchema } from './db.js'
-import { runLoop, syncOnce } from './sync.js'
+// Load config dependent modules only after dotenv has populated process.env.
+const [{ POLL_MS }, { ensureSchema }, { runLoop, syncOnce }] = await Promise.all([
+  import('./config.js'),
+  import('./db.js'),
+  import('./sync.js'),
+])
 
 const once = process.argv.includes('--once')
 await ensureSchema()

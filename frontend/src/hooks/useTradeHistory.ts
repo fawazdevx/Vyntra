@@ -121,12 +121,15 @@ export function useTradeHistory(curve?: Address, launchId?: number) {
     enabled: Boolean((publicClient && curve) || (isIndexerConfigured && launchId)),
     refetchInterval: 10_000,
     queryFn: async () => {
+      // Indexer returns [] for unindexed launches (truthy) — fall through to RPC so
+      // charts still render buys made before the daily sync catches up.
+      let indexed: TradePoint[] | null = null
       if (isIndexerConfigured && launchId && launchId > 0) {
-        const indexed = await fetchTradesFromIndexer(launchId)
-        if (indexed) return indexed
+        indexed = await fetchTradesFromIndexer(launchId)
+        if (indexed && indexed.length > 0) return indexed
       }
-      if (!publicClient || !curve) return [] as TradePoint[]
-      return fetchTrades(publicClient, curve)
+      if (publicClient && curve) return fetchTrades(publicClient, curve)
+      return indexed ?? ([] as TradePoint[])
     },
   })
 

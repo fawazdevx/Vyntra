@@ -1,10 +1,12 @@
 import { jsonCors, optionsOk } from '../../src/edge-cors.js'
+import { maybeSyncEdge } from '../../src/edge-sync.js'
 import { createClient } from '@libsql/client/web'
 
 export const config = { runtime: 'edge' }
 
 export default async function handler(req?: Request) {
   if (req?.method === 'OPTIONS') return optionsOk()
+  await maybeSyncEdge()
   const url = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || ''
   const authToken = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN
   if (!url || url.startsWith('file:')) {

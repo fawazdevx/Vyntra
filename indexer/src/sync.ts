@@ -4,6 +4,7 @@ import {
   BOARD_ADDRESS,
   CHAIN_ID,
   CONFIRMATIONS,
+  LOG_CHUNK,
   RPC_URL,
   START_BLOCK,
   requireFactory,
@@ -172,13 +173,19 @@ async function blockTs(blockNumber: bigint, cache: Map<string, number>) {
 export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: number; trades: number }> {
   const factory = requireFactory()
   const latest = await client.getBlockNumber()
-  const safeTo = latest > BigInt(CONFIRMATIONS) ? latest - BigInt(CONFIRMATIONS) : 0n
+  const chainSafeTo = latest > BigInt(CONFIRMATIONS) ? latest - BigInt(CONFIRMATIONS) : 0n
 
   const last = await getMeta('last_block')
   let from = last ? BigInt(last) + 1n : START_BLOCK
-  if (from > safeTo) {
-    return { from, to: safeTo, launches: 0, trades: 0 }
+  if (from > chainSafeTo) {
+    await setMeta('last_sync_at', String(Math.floor(Date.now() / 1000)))
+    return { from, to: chainSafeTo, launches: 0, trades: 0 }
   }
+
+  // Keep each RPC log query within the configured provider range limit. Persist
+  // the checkpoint after this batch so a large initial backfill can resume.
+  const chunkSize = BigInt(Math.max(1, Math.floor(LOG_CHUNK || 2_000)))
+  const safeTo = chainSafeTo < from + chunkSize - 1n ? chainSafeTo : from + chunkSize - 1n
 
   await setMeta('factory', factory)
   await setMeta('chain_id', String(CHAIN_ID))

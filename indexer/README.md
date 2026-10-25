@@ -68,6 +68,7 @@ turso db tokens create vyntra-indexer
 | `TURSO_AUTH_TOKEN` | yes | Turso token |
 | `INDEXER_RPC_URL` | yes | e.g. `https://rpc.bohr.life` |
 | `INDEXER_CHAIN_ID` | yes | `968` testnet / `677` mainnet |
+| `INDEXER_LOG_CHUNK` | optional | Maximum block range per sync batch. Default `2000`. |
 | `CRON_SECRET` | recommended | Random string; Cron sends `Authorization: Bearer …` |
 | `INDEXER_SYNC_STALE_SEC` | optional | Default `20` — request-path sync if older |
 
@@ -100,7 +101,7 @@ curl -s https://<your-indexer-project>.vercel.app/api/health
 
 There is no always-on worker. Sync runs when:
 
-1. **Stale-on-request (primary on Hobby)** — API routes call `maybeSync()` if `last_sync_at` is older than `INDEXER_SYNC_STALE_SEC` (default 20s). Markets stay fresh when users hit the app.
+1. **Stale-on-request (primary on Hobby)** — API routes call the sync if `last_sync_at` is older than `INDEXER_SYNC_STALE_SEC` (default 20s). Each sync advances by at most `INDEXER_LOG_CHUNK` blocks (default 2000), so initial backfills resume safely across requests.
 2. **Cron (backup)** — `vercel.json` calls `/api/cron/sync` once daily (`0 0 * * *`). Vercel **Hobby** only allows daily crons; `*/5 * * * *` needs **Pro**.
 
 On Hobby you do **not** need Pro for a working indexer — request traffic drives sync. Upgrade Pro only if you want frequent background sync with no traffic.

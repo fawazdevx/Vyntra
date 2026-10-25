@@ -5,10 +5,14 @@ try {
   // optional
 }
 
-import { API_PORT, POLL_MS, FACTORY_ADDRESS } from './config.js'
-import { ensureSchema } from './db.js'
-import { startApi } from './serve-local.js'
-import { runLoop } from './sync.js'
+// Load config dependent modules only after dotenv has populated process.env.
+const [{ API_PORT, POLL_MS, FACTORY_ADDRESS }, { ensureSchema }, { startApi }, { runLoop }] =
+  await Promise.all([
+    import('./config.js'),
+    import('./db.js'),
+    import('./serve-local.js'),
+    import('./sync.js'),
+  ])
 
 await ensureSchema()
 startApi(API_PORT)

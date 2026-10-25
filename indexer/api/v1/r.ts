@@ -1,13 +1,9 @@
 import { qAll, qOne } from '../../src/edge-db.js'
 import { jsonCors, optionsOk, withCors } from '../../src/edge-cors.js'
+import { maybeSyncEdge } from '../../src/edge-sync.js'
+import { getHolders, getSnipers } from '../../src/analytics.js'
 
 export const config = { runtime: 'edge' }
-
-function scrub(n: number) {
-  if (!Number.isFinite(n)) return 0
-  if (Math.abs(n) < 1e-12) return 0
-  return Math.round(n * 1e12) / 1e12
-}
 
 function launchJson(row: Record<string, unknown>) {
   return {
@@ -37,6 +33,7 @@ function launchJson(row: Record<string, unknown>) {
 export default async function handler(req: Request) {
   if (req.method === 'OPTIONS') return optionsOk()
   try {
+    await maybeSyncEdge()
     const u = new URL(req.url)
     const kind = u.searchParams.get('kind') || ''
     const id = Number(u.searchParams.get('id') || 0)
@@ -117,47 +114,13 @@ export default async function handler(req: Request) {
       if (!(await qOne('SELECT id FROM launches WHERE id = ?', [id]))) {
         return jsonCors({ error: 'not_found' }, { status: 404 })
       }
-      const rows = await qAll(
-        `SELECT trader AS address,
-           SUM(CASE WHEN side = 'buy' THEN token_amount ELSE 0 END) AS bought,
-           SUM(CASE WHEN side = 'sell' THEN token_amount ELSE 0 END) AS sold,
-           SUM(CASE WHEN side = 'buy' THEN bot_amount ELSE 0 END) AS spent_bot,
-           SUM(CASE WHEN side = 'sell' THEN bot_amount ELSE 0 END) AS received_bot,
-           COUNT(*) AS trade_count,
-           MIN(timestamp) AS first_trade_at,
-           MAX(timestamp) AS last_trade_at
-         FROM trades WHERE launch_id = ? GROUP BY trader`,
-        [id],
-      )
-      const holders = rows
-        .map((r) => {
-          const bought = Number(r.bought) || 0
-          const sold = Number(r.sold) || 0
-          return {
-            address: String(r.address),
-            boughtToken: scrub(bought),
-            soldToken: scrub(sold),
-            heldToken: scrub(bought - sold),
-            spentBot: scrub(Number(r.spent_bot) || 0),
-            receivedBot: scrub(Number(r.received_bot) || 0),
-            tradeCount: Number(r.trade_count) || 0,
-            firstTradeAt: Number(r.first_trade_at) || 0,
-            lastTradeAt: Number(r.last_trade_at) || 0,
-          }
-        })
-        .filter((h) => h.heldToken > 1e-9)
-        .sort((a, b) => b.heldToken - a.heldToken)
-      const totalHeld = holders.reduce((s, h) => s + h.heldToken, 0)
-      const lim = Math.min(limit, 500)
+      const { holders, summary } = await getHolders(id, Math.min(limit, 500))
       return jsonCors({
         launchId: id,
         source: 'curve_trades',
-        holders: holders.slice(0, lim).map((h, i) => ({
-          ...h,
-          rank: i + 1,
-          shareBps: totalHeld > 0 ? Math.round((h.heldToken / totalHeld) * 10_000) : 0,
-        })),
-        summary: { holderCount: holders.length, totalHeldToken: scrub(totalHeld) },
+        note: 'Balances are net Buy/Sell on the bonding curve (wallet transfers ignored).',
+        holders,
+        summary,
       })
     }
 
@@ -165,46 +128,18 @@ export default async function handler(req: Request) {
       if (!(await qOne('SELECT id FROM launches WHERE id = ?', [id]))) {
         return jsonCors({ error: 'not_found' }, { status: 404 })
       }
-      const buys = await qAll(
-        `SELECT trader, timestamp, block_number FROM trades
-         WHERE launch_id = ? AND side = 'buy' ORDER BY block_number ASC, id ASC`,
-        [id],
-      )
-      const seen = new Set<string>()
-      const snipers = []
-      const lim = Math.min(limit || 20, 100)
-      for (const b of buys) {
-        const addr = String(b.trader).toLowerCase()
-        if (seen.has(addr)) continue
-        seen.add(addr)
-        const agg = await qOne(
-          `SELECT
-             SUM(CASE WHEN side = 'buy' THEN token_amount ELSE 0 END) AS bought,
-             SUM(CASE WHEN side = 'sell' THEN token_amount ELSE 0 END) AS sold
-           FROM trades WHERE launch_id = ? AND trader = ?`,
-          [id, String(b.trader)],
-        )
-        const bought = Number(agg?.bought) || 0
-        const sold = Number(agg?.sold) || 0
-        snipers.push({
-          address: b.trader,
-          firstBuyAt: Number(b.timestamp),
-          firstBuyBlock: Number(b.block_number),
-          boughtToken: scrub(bought),
-          soldToken: scrub(sold),
-          heldToken: scrub(bought - sold),
-          dumped: sold > bought * 0.5,
-        })
-        if (snipers.length >= lim) break
-      }
+      const earlySeconds = Number(u.searchParams.get('earlySeconds') || 0)
+      const { snipers, summary, window } = await getSnipers(id, {
+        limit: Math.min(limit || 20, 100),
+        earlySeconds,
+      })
       return jsonCors({
         launchId: id,
         source: 'curve_trades',
+        note: 'Snipers = first N unique buyers by block order. Dump rate uses later sells.',
+        window,
         snipers,
-        summary: {
-          sniperCount: snipers.length,
-          dumpedCount: snipers.filter((s) => s.dumped).length,
-        },
+        summary,
       })
     }
 
