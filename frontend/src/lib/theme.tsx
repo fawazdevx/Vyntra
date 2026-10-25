@@ -26,9 +26,7 @@ function readStored(): ThemeMode {
   } catch {
     // ignore
   }
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark'
-  }
+  // Product default is light; users can switch and we remember their choice.
   return 'light'
 }
 

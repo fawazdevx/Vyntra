@@ -80,6 +80,7 @@ Health check:
 
 ```bash
 curl -s https://<your-indexer-project>.vercel.app/api/health
+# also: https://<your-indexer-project>.vercel.app/  (rewrites to health)
 ```
 
 ### How sync works on Vercel

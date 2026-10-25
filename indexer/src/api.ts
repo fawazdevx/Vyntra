@@ -72,27 +72,39 @@ export function createApp(opts: { basePath?: string } = {}) {
   const app = opts.basePath ? new Hono().basePath(opts.basePath) : new Hono()
   app.use('*', cors())
 
-  app.use('*', async (c, next) => {
-    await ensureSchema()
-    // Keep reads fresh without a long-running worker.
-    if (!c.req.path.endsWith('/cron/sync')) {
-      void maybeSync(false)
-    }
-    await next()
-  })
+  app.get('/', (c) => c.redirect('/api/health'))
 
-  app.get('/health', async (c) =>
-    c.json({
+  app.get('/health', async (c) => {
+    // Fast path — do not block on chain sync (Hobby timeouts are short).
+    let lastBlock: string | null = null
+    let lastSyncAt: string | null = null
+    let dbOk = false
+    try {
+      await ensureSchema()
+      lastBlock = await getMeta('last_block')
+      lastSyncAt = await getMeta('last_sync_at')
+      dbOk = true
+    } catch (e) {
+      console.error('[indexer] health db', e)
+    }
+    return c.json({
       ok: true,
+      dbOk,
       chainId: CHAIN_ID,
       factory: FACTORY_ADDRESS ?? null,
       board: BOARD_ADDRESS ?? null,
       rpc: RPC_URL,
-      lastBlock: await getMeta('last_block'),
-      lastSyncAt: await getMeta('last_sync_at'),
-      ready: Boolean(FACTORY_ADDRESS),
-    }),
-  )
+      lastBlock,
+      lastSyncAt,
+      ready: Boolean(FACTORY_ADDRESS) && dbOk,
+    })
+  })
+
+  app.use('/v1/*', async (c, next) => {
+    await ensureSchema()
+    void maybeSync(false)
+    await next()
+  })
 
   app.get('/cron/sync', async (c) => {
     const auth = c.req.header('authorization') || ''
@@ -103,6 +115,7 @@ export function createApp(opts: { basePath?: string } = {}) {
       return c.json({ ok: false, error: 'factory_unset' }, 503)
     }
     try {
+      await ensureSchema()
       const r = await syncOnce()
       return c.json({ ok: true, ...r, from: r.from.toString(), to: r.to.toString() })
     } catch (e) {
