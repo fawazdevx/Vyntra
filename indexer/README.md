@@ -86,10 +86,10 @@ curl -s https://<your-indexer-project>.vercel.app/api/health
 
 There is no always-on worker. Sync runs when:
 
-1. **Cron** hits `/api/cron/sync` every 5 minutes (`vercel.json`) — needs a plan that allows that schedule
-2. **Stale-on-request** — API routes call `maybeSync()` if `last_sync_at` is older than `INDEXER_SYNC_STALE_SEC`
+1. **Stale-on-request (primary on Hobby)** — API routes call `maybeSync()` if `last_sync_at` is older than `INDEXER_SYNC_STALE_SEC` (default 20s). Markets stay fresh when users hit the app.
+2. **Cron (backup)** — `vercel.json` calls `/api/cron/sync` once daily (`0 0 * * *`). Vercel **Hobby** only allows daily crons; `*/5 * * * *` needs **Pro**.
 
-Hobby cron limits may be daily only; stale-on-request keeps markets usable without Pro.
+On Hobby you do **not** need Pro for a working indexer — request traffic drives sync. Upgrade Pro only if you want frequent background sync with no traffic.
 
 ## API
 
