@@ -1,7 +1,7 @@
 # Foundry build
 cache/
 out/
-lib/
+/lib/
 broadcast/
 
 # Dev-only notes (keep local)
