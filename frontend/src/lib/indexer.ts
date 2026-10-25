@@ -273,7 +273,8 @@ export type PortfolioPayload = {
 export type WalletTradesPayload = {
   address: string
   trades: Array<{
-    launchId: number
+    launchId: number | null
+    market: 'launch' | 'platform'
     symbol: string
     name: string
     side: 'buy' | 'sell'

@@ -54,6 +54,25 @@ CREATE INDEX IF NOT EXISTS idx_trades_curve ON trades(curve);
 CREATE INDEX IF NOT EXISTS idx_trades_trader ON trades(trader);
 CREATE INDEX IF NOT EXISTS idx_trades_launch_trader ON trades(launch_id, trader);
 
+CREATE TABLE IF NOT EXISTS platform_trades (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  side TEXT NOT NULL CHECK (side IN ('buy','sell')),
+  trader TEXT NOT NULL,
+  bot_amount REAL NOT NULL,
+  token_amount REAL NOT NULL,
+  fee REAL NOT NULL DEFAULT 0,
+  price REAL NOT NULL,
+  mcap REAL NOT NULL,
+  block_number INTEGER NOT NULL,
+  tx_hash TEXT NOT NULL,
+  log_index INTEGER NOT NULL,
+  timestamp INTEGER NOT NULL,
+  UNIQUE (tx_hash, log_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_platform_trades_trader ON platform_trades(trader);
+CREATE INDEX IF NOT EXISTS idx_platform_trades_time ON platform_trades(timestamp);
+
 CREATE TABLE IF NOT EXISTS replies (
   launch_id INTEGER NOT NULL,
   reply_index INTEGER NOT NULL,

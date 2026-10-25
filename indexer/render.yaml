@@ -9,6 +9,10 @@ services:
     envVars:
       - key: FACTORY_ADDRESS
         sync: false
+      - key: VYNTRA_MARKET_ADDRESS
+        sync: false
+      - key: VYNTRA_MARKET_START_BLOCK
+        sync: false
       - key: INDEXER_CHAIN_ID
         sync: false
       - key: INDEXER_RPC_URL

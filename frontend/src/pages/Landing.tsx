@@ -10,8 +10,17 @@ import {
   Shield,
   Zap,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { ThemeToggle } from '../components/ThemeToggle'
+import { BotUsd } from '../components/BotUsd'
 import { VYNTRA_LOGO } from '../lib/config'
+import { fetchStatsFromIndexer, isIndexerConfigured } from '../lib/indexer'
+
+function formatVolume(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: Math.abs(value) < 1 ? 4 : 2,
+  }).format(value)
+}
 
 const FEATURES = [
   {
@@ -43,6 +52,16 @@ const STEPS = [
 ]
 
 export function Landing() {
+  const statsQuery = useQuery({
+    queryKey: ['vyntra', 'landing-stats'],
+    queryFn: fetchStatsFromIndexer,
+    enabled: isIndexerConfigured,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    retry: 1,
+  })
+  const stats = statsQuery.data
+
   return (
     <div className="relative min-h-screen overflow-x-hidden">
       <div className="pointer-events-none absolute inset-0 -z-10">
@@ -132,6 +151,46 @@ export function Landing() {
                 <p className="mt-1 text-xs text-[var(--vyntra-muted)]">Curve inventory never withdraws</p>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8" aria-label="Vyntra testnet trading activity">
+          <div className="card grid gap-5 p-5 sm:grid-cols-2 sm:items-center sm:p-6 lg:grid-cols-[1fr_auto_auto] lg:gap-10">
+            <div className="sm:col-span-2 lg:col-span-1">
+              <p className="page-kicker">BOT Chain Testnet activity</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight">All-time Vyntra trading</h2>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--vyntra-muted)]">
+                Combined BOT volume across launch-curve tokens and the $VYNTRA platform-token market.
+              </p>
+            </div>
+
+            <div className="min-w-0 lg:border-l lg:border-[var(--vyntra-border)] lg:pl-8">
+              <p className="label">Total volume</p>
+              <p className="mt-1 font-display text-2xl font-bold tracking-tight">
+                {stats ? `${formatVolume(stats.volumeBot)} BOT` : statsQuery.isFetching ? 'Loading…' : '—'}
+              </p>
+              {stats && <BotUsd value={stats.volumeBot} className="mt-1 block text-sm text-[var(--vyntra-muted)]" />}
+            </div>
+
+            <div className="min-w-0 sm:border-l sm:border-[var(--vyntra-border)] sm:pl-5 lg:pl-8">
+              <p className="label">Recorded trades</p>
+              <p className="mt-1 font-display text-2xl font-bold tracking-tight">
+                {stats ? stats.trades.toLocaleString('en-US') : statsQuery.isFetching ? 'Loading…' : '—'}
+              </p>
+              {!stats && isIndexerConfigured && !statsQuery.isFetching && (
+                <button
+                  type="button"
+                  onClick={() => void statsQuery.refetch()}
+                  className="mt-1 text-xs font-medium text-[var(--vyntra-primary)] hover:underline"
+                >
+                  Retry loading stats
+                </button>
+              )}
+            </div>
+
+            <p className="text-[11px] leading-relaxed text-[var(--vyntra-faint)] sm:col-span-2 lg:col-span-3">
+              USD is an estimate using the BOT Chain mainnet WBOT reference price. Testnet BOT has no guaranteed dollar value.
+            </p>
           </div>
         </section>
 

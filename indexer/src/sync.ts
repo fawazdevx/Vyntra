@@ -1,5 +1,5 @@
 import { createPublicClient, formatEther, http, type Address } from 'viem'
-import { boardAbi, curveAbi, erc20MetaAbi, factoryAbi } from './abis.js'
+import { boardAbi, curveAbi, erc20MetaAbi, factoryAbi, vyntraMarketAbi } from './abis.js'
 import {
   BOARD_ADDRESS,
   CHAIN_ID,
@@ -7,6 +7,8 @@ import {
   LOG_CHUNK,
   RPC_URL,
   START_BLOCK,
+  VYNTRA_MARKET_ADDRESS,
+  VYNTRA_MARKET_START_BLOCK,
   requireFactory,
 } from './config.js'
 import { execute, getMeta, queryAll, queryOne, setMeta, type LaunchRow } from './db.js'
@@ -170,6 +172,123 @@ async function blockTs(blockNumber: bigint, cache: Map<string, number>) {
   return ts
 }
 
+async function insertPlatformTrade(row: {
+  side: 'buy' | 'sell'
+  trader: string
+  botAmount: number
+  tokenAmount: number
+  price: number
+  mcap: number
+  blockNumber: number
+  txHash: string
+  logIndex: number
+  timestamp: number
+}) {
+  const info = await execute(
+    `INSERT OR IGNORE INTO platform_trades (
+      side, trader, bot_amount, token_amount, fee, price, mcap,
+      block_number, tx_hash, log_index, timestamp
+    ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
+    [
+      row.side,
+      row.trader,
+      row.botAmount,
+      row.tokenAmount,
+      row.price,
+      row.mcap,
+      row.blockNumber,
+      row.txHash,
+      row.logIndex,
+      row.timestamp,
+    ],
+  )
+  return info.rowsAffected > 0
+}
+
+async function syncVyntraMarketTrades(
+  chainSafeTo: bigint,
+  tsCache: Map<string, number>,
+): Promise<number> {
+  if (!VYNTRA_MARKET_ADDRESS) return 0
+
+  const last = await getMeta('last_vyntra_market_block')
+  const from = last ? BigInt(last) + 1n : VYNTRA_MARKET_START_BLOCK
+  if (from > chainSafeTo) return 0
+
+  const chunkSize = BigInt(Math.max(1, Math.floor(LOG_CHUNK || 2_000)))
+  const safeTo = chainSafeTo < from + chunkSize - 1n ? chainSafeTo : from + chunkSize - 1n
+  const [buys, sells] = await Promise.all([
+    client.getContractEvents({
+      address: VYNTRA_MARKET_ADDRESS,
+      abi: vyntraMarketAbi,
+      eventName: 'BuyVyntra',
+      fromBlock: from,
+      toBlock: safeTo,
+    }),
+    client.getContractEvents({
+      address: VYNTRA_MARKET_ADDRESS,
+      abi: vyntraMarketAbi,
+      eventName: 'SellVyntra',
+      fromBlock: from,
+      toBlock: safeTo,
+    }),
+  ])
+
+  let inserted = 0
+  for (const event of buys) {
+    if (
+      event.blockNumber == null ||
+      !event.transactionHash ||
+      event.args.botIn == null ||
+      event.args.vyntraOut == null
+    ) continue
+    const botAmount = Number(formatEther(event.args.botIn))
+    const tokenAmount = Number(formatEther(event.args.vyntraOut))
+    const price = tokenAmount > 0 ? botAmount / tokenAmount : 0
+    const added = await insertPlatformTrade({
+      side: 'buy',
+      trader: event.args.buyer!,
+      botAmount,
+      tokenAmount,
+      price,
+      mcap: price * TOTAL_SUPPLY,
+      blockNumber: Number(event.blockNumber),
+      txHash: event.transactionHash,
+      logIndex: event.logIndex ?? 0,
+      timestamp: await blockTs(event.blockNumber, tsCache),
+    })
+    if (added) inserted++
+  }
+
+  for (const event of sells) {
+    if (
+      event.blockNumber == null ||
+      !event.transactionHash ||
+      event.args.botOut == null ||
+      event.args.vyntraIn == null
+    ) continue
+    const botAmount = Number(formatEther(event.args.botOut))
+    const tokenAmount = Number(formatEther(event.args.vyntraIn))
+    const price = tokenAmount > 0 ? botAmount / tokenAmount : 0
+    const added = await insertPlatformTrade({
+      side: 'sell',
+      trader: event.args.seller!,
+      botAmount,
+      tokenAmount,
+      price,
+      mcap: price * TOTAL_SUPPLY,
+      blockNumber: Number(event.blockNumber),
+      txHash: event.transactionHash,
+      logIndex: event.logIndex ?? 0,
+      timestamp: await blockTs(event.blockNumber, tsCache),
+    })
+    if (added) inserted++
+  }
+
+  await setMeta('last_vyntra_market_block', safeTo.toString())
+  return inserted
+}
+
 export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: number; trades: number }> {
   const factory = requireFactory()
   const latest = await client.getBlockNumber()
@@ -177,22 +296,30 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
 
   const last = await getMeta('last_block')
   let from = last ? BigInt(last) + 1n : START_BLOCK
-  if (from > chainSafeTo) {
-    await setMeta('last_sync_at', String(Math.floor(Date.now() / 1000)))
-    return { from, to: chainSafeTo, launches: 0, trades: 0 }
-  }
-
-  // Keep each RPC log query within the configured provider range limit. Persist
-  // the checkpoint after this batch so a large initial backfill can resume.
-  const chunkSize = BigInt(Math.max(1, Math.floor(LOG_CHUNK || 2_000)))
-  const safeTo = chainSafeTo < from + chunkSize - 1n ? chainSafeTo : from + chunkSize - 1n
-
   await setMeta('factory', factory)
   await setMeta('chain_id', String(CHAIN_ID))
 
   const tsCache = new Map<string, number>()
   let newLaunches = 0
   let newTrades = 0
+  if (VYNTRA_MARKET_ADDRESS) {
+    try {
+      newTrades = await syncVyntraMarketTrades(chainSafeTo, tsCache)
+    } catch (error) {
+      // The optional platform index must not stall the launch-curve indexer.
+      console.error('[indexer] VYNTRA market sync error', error)
+    }
+  }
+
+  if (from > chainSafeTo) {
+    await setMeta('last_sync_at', String(Math.floor(Date.now() / 1000)))
+    return { from, to: chainSafeTo, launches: 0, trades: newTrades }
+  }
+
+  // Keep each RPC log query within the configured provider range limit. Persist
+  // the checkpoint after this batch so a large initial backfill can resume.
+  const chunkSize = BigInt(Math.max(1, Math.floor(LOG_CHUNK || 2_000)))
+  const safeTo = chainSafeTo < from + chunkSize - 1n ? chainSafeTo : from + chunkSize - 1n
 
   // 1) Factory TokenSpawned
   const spawnLogs = await client.getContractEvents({

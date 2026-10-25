@@ -38,7 +38,9 @@ Render is the recommended production host when continuous background syncing is 
 
    | Name | Value |
    |------|-------|
-   | `FACTORY_ADDRESS` | Mainnet VyntraFactory address |
+| `FACTORY_ADDRESS` | Mainnet VyntraFactory address |
+| `VYNTRA_MARKET_ADDRESS` | Mainnet VYNTRA/BOT market contract address |
+| `VYNTRA_MARKET_START_BLOCK` | Block where that market contract was deployed (for full trade history) |
    | `INDEXER_CHAIN_ID` | `677` for BOT Chain mainnet |
    | `INDEXER_RPC_URL` | Mainnet RPC URL |
    | `INDEXER_START_BLOCK` | Block where the mainnet factory is deployed |
@@ -87,6 +89,8 @@ turso db tokens create vyntra-indexer
 | Name | Required | Notes |
 |------|----------|--------|
 | `FACTORY_ADDRESS` | yes | Live VyntraFactory |
+| `VYNTRA_MARKET_ADDRESS` | recommended | VYNTRA/BOT market; enables platform-token history and includes its volume in aggregate stats |
+| `VYNTRA_MARKET_START_BLOCK` | recommended | Market deployment block; separate checkpoint backfills market events even if the factory index is already current |
 | `BOARD_ADDRESS` | optional | Replies |
 | `TURSO_DATABASE_URL` | yes | `libsql://…turso.io` |
 | `TURSO_AUTH_TOKEN` | yes | Turso token |

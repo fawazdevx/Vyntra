@@ -24,8 +24,10 @@ export default async function handler(req?: Request) {
         SUM(CASE WHEN graduated = 0 AND migrated = 0 THEN 1 ELSE 0 END) AS on_curve,
         SUM(CASE WHEN graduated = 1 OR migrated = 1 THEN 1 ELSE 0 END) AS graduated,
         COALESCE(SUM(raised_bot), 0) AS raised_bot,
-        COALESCE(SUM(volume_bot), 0) AS volume_bot,
-        COALESCE(SUM(trade_count), 0) AS trades
+        COALESCE(SUM(volume_bot), 0) +
+          COALESCE((SELECT SUM(bot_amount) FROM platform_trades), 0) AS volume_bot,
+        COALESCE(SUM(trade_count), 0) +
+          COALESCE((SELECT COUNT(*) FROM platform_trades), 0) AS trades
       FROM launches
     `)
     const row = rs.rows[0] || {}

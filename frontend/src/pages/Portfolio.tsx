@@ -233,7 +233,10 @@ export function Portfolio() {
                         {fmtTime(t.timestamp)}
                       </td>
                       <td className="px-2 py-3">
-                        <Link to={`/token/${t.launchId}`} className="font-semibold hover:underline">
+                        <Link
+                          to={t.market === 'platform' ? '/vyntra' : `/token/${t.launchId}`}
+                          className="font-semibold hover:underline"
+                        >
                           ${t.symbol}
                         </Link>
                       </td>

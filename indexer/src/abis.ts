@@ -110,3 +110,24 @@ export const boardAbi = [
     ],
   },
 ] as const
+
+export const vyntraMarketAbi = [
+  {
+    type: 'event',
+    name: 'BuyVyntra',
+    inputs: [
+      { name: 'buyer', type: 'address', indexed: true },
+      { name: 'botIn', type: 'uint256', indexed: false },
+      { name: 'vyntraOut', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'SellVyntra',
+    inputs: [
+      { name: 'seller', type: 'address', indexed: true },
+      { name: 'vyntraIn', type: 'uint256', indexed: false },
+      { name: 'botOut', type: 'uint256', indexed: false },
+    ],
+  },
+] as const

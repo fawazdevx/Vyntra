@@ -26,7 +26,8 @@ export type PortfolioPosition = {
 }
 
 export type PortfolioTrade = {
-  launchId: number
+  launchId: number | null
+  market: 'launch' | 'platform'
   symbol: string
   name: string
   side: 'buy' | 'sell'
@@ -257,8 +258,8 @@ export async function getWalletTrades(
   if (!isAddress(wallet)) return { address: wallet, trades: [] }
 
   const lim = Math.min(Math.max(limit, 1), 2000)
-  const rows = await queryAll<{
-    launch_id: number
+  type WalletTradeRow = {
+    launch_id: number | null
     side: 'buy' | 'sell'
     bot_amount: number
     token_amount: number
@@ -268,24 +269,58 @@ export async function getWalletTrades(
     timestamp: number
     block_number: number
     tx_hash: string
+    log_index: number
     trader: string
     symbol: string
     name: string
-  }>(
-    `SELECT t.launch_id, t.side, t.bot_amount, t.token_amount, t.price, t.mcap, t.fee,
-            t.timestamp, t.block_number, t.tx_hash, t.trader, l.symbol, l.name
-     FROM trades t
-     JOIN launches l ON l.id = t.launch_id
-     WHERE LOWER(t.trader) = ?
-     ORDER BY t.timestamp DESC, t.id DESC
-     LIMIT ?`,
-    [wallet, lim],
-  )
+    market: 'launch' | 'platform'
+  }
+
+  const [launchRows, platformRows] = await Promise.all([
+    queryAll<Omit<WalletTradeRow, 'market' | 'launch_id'> & { launch_id: number }>(
+      `SELECT t.launch_id, t.side, t.bot_amount, t.token_amount, t.price, t.mcap, t.fee,
+              t.timestamp, t.block_number, t.tx_hash, t.log_index, t.trader, l.symbol, l.name
+       FROM trades t
+       JOIN launches l ON l.id = t.launch_id
+       WHERE LOWER(t.trader) = ?
+       ORDER BY t.timestamp DESC, t.id DESC
+       LIMIT ?`,
+      [wallet, lim],
+    ),
+    queryAll<Omit<WalletTradeRow, 'market' | 'launch_id' | 'symbol' | 'name'>>(
+      `SELECT side, bot_amount, token_amount, price, mcap, fee,
+              timestamp, block_number, tx_hash, log_index, trader
+       FROM platform_trades
+       WHERE LOWER(trader) = ?
+       ORDER BY timestamp DESC, id DESC
+       LIMIT ?`,
+      [wallet, lim],
+    ),
+  ])
+
+  const rows: WalletTradeRow[] = [
+    ...launchRows.map((row) => ({ ...row, market: 'launch' as const })),
+    ...platformRows.map((row) => ({
+      ...row,
+      launch_id: null,
+      symbol: 'VYNTRA',
+      name: 'Vyntra',
+      market: 'platform' as const,
+    })),
+  ]
+    .sort(
+      (a, b) =>
+        b.timestamp - a.timestamp ||
+        b.block_number - a.block_number ||
+        b.log_index - a.log_index,
+    )
+    .slice(0, lim)
 
   return {
     address: wallet,
     trades: rows.map((r) => ({
       launchId: r.launch_id,
+      market: r.market,
       symbol: r.symbol,
       name: r.name,
       side: r.side,
