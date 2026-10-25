@@ -1,7 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/", "destination": "/api/health" }
+    { "source": "/", "destination": "/api/health" },
+    { "source": "/api/v1/launches/:id", "destination": "/api/v1/r?kind=launch&id=:id" },
+    { "source": "/api/v1/launches/:id/trades", "destination": "/api/v1/r?kind=trades&id=:id" },
+    { "source": "/api/v1/launches/:id/ohlcv", "destination": "/api/v1/r?kind=ohlcv&id=:id" },
+    { "source": "/api/v1/launches/:id/holders", "destination": "/api/v1/r?kind=holders&id=:id" },
+    { "source": "/api/v1/launches/:id/snipers", "destination": "/api/v1/r?kind=snipers&id=:id" },
+    { "source": "/api/v1/launches/:id/replies", "destination": "/api/v1/r?kind=replies&id=:id" },
+    { "source": "/api/v1/wallets/:address/portfolio", "destination": "/api/v1/r?kind=portfolio&address=:address" },
+    { "source": "/api/v1/wallets/:address/trades", "destination": "/api/v1/r?kind=wallet_trades&address=:address" }
   ],
   "crons": [
     {
