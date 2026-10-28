@@ -234,7 +234,7 @@ export type PortfolioPayload = {
   source?: string
   note?: string
   positions: Array<{
-    launchId: number
+    launchId: number | null
     token: string
     curve: string
     name: string

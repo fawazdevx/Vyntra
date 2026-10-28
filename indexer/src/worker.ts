@@ -5,6 +5,9 @@ try {
   // optional
 }
 
+const { configureLocalDatabase } = await import('./local-db.js')
+configureLocalDatabase()
+
 // Load config dependent modules only after dotenv has populated process.env.
 const [{ POLL_MS }, { ensureSchema }, { runLoop, syncOnce }] = await Promise.all([
   import('./config.js'),

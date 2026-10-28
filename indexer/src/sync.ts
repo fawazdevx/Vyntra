@@ -8,6 +8,7 @@ import {
   RPC_URL,
   START_BLOCK,
   VYNTRA_MARKET_ADDRESS,
+  VYNTRA_MARKET_CATCHUP_CHUNKS,
   VYNTRA_MARKET_START_BLOCK,
   requireFactory,
 } from './config.js'
@@ -216,76 +217,87 @@ async function syncVyntraMarketTrades(
   if (from > chainSafeTo) return 0
 
   const chunkSize = BigInt(Math.max(1, Math.floor(LOG_CHUNK || 2_000)))
-  const safeTo = chainSafeTo < from + chunkSize - 1n ? chainSafeTo : from + chunkSize - 1n
-  const [buys, sells] = await Promise.all([
-    client.getContractEvents({
-      address: VYNTRA_MARKET_ADDRESS,
-      abi: vyntraMarketAbi,
-      eventName: 'BuyVyntra',
-      fromBlock: from,
-      toBlock: safeTo,
-    }),
-    client.getContractEvents({
-      address: VYNTRA_MARKET_ADDRESS,
-      abi: vyntraMarketAbi,
-      eventName: 'SellVyntra',
-      fromBlock: from,
-      toBlock: safeTo,
-    }),
-  ])
-
   let inserted = 0
-  for (const event of buys) {
-    if (
-      event.blockNumber == null ||
-      !event.transactionHash ||
-      event.args.botIn == null ||
-      event.args.vyntraOut == null
-    ) continue
-    const botAmount = Number(formatEther(event.args.botIn))
-    const tokenAmount = Number(formatEther(event.args.vyntraOut))
-    const price = tokenAmount > 0 ? botAmount / tokenAmount : 0
-    const added = await insertPlatformTrade({
-      side: 'buy',
-      trader: event.args.buyer!,
-      botAmount,
-      tokenAmount,
-      price,
-      mcap: price * TOTAL_SUPPLY,
-      blockNumber: Number(event.blockNumber),
-      txHash: event.transactionHash,
-      logIndex: event.logIndex ?? 0,
-      timestamp: await blockTs(event.blockNumber, tsCache),
-    })
-    if (added) inserted++
+  let cursor = from
+  let chunks = 0
+  while (cursor <= chainSafeTo && chunks < VYNTRA_MARKET_CATCHUP_CHUNKS) {
+    const safeTo = chainSafeTo < cursor + chunkSize - 1n ? chainSafeTo : cursor + chunkSize - 1n
+    const [buys, sells] = await Promise.all([
+      client.getContractEvents({
+        address: VYNTRA_MARKET_ADDRESS,
+        abi: vyntraMarketAbi,
+        eventName: 'BuyVyntra',
+        fromBlock: cursor,
+        toBlock: safeTo,
+      }),
+      client.getContractEvents({
+        address: VYNTRA_MARKET_ADDRESS,
+        abi: vyntraMarketAbi,
+        eventName: 'SellVyntra',
+        fromBlock: cursor,
+        toBlock: safeTo,
+      }),
+    ])
+
+    for (const event of buys) {
+      if (
+        event.blockNumber == null ||
+        !event.transactionHash ||
+        event.args.botIn == null ||
+        event.args.vyntraOut == null
+      ) continue
+      const botAmount = Number(formatEther(event.args.botIn))
+      const tokenAmount = Number(formatEther(event.args.vyntraOut))
+      const price = tokenAmount > 0 ? botAmount / tokenAmount : 0
+      const added = await insertPlatformTrade({
+        side: 'buy',
+        trader: event.args.buyer!,
+        botAmount,
+        tokenAmount,
+        price,
+        mcap: price * TOTAL_SUPPLY,
+        blockNumber: Number(event.blockNumber),
+        txHash: event.transactionHash,
+        logIndex: event.logIndex ?? 0,
+        timestamp: await blockTs(event.blockNumber, tsCache),
+      })
+      if (added) inserted++
+    }
+
+    for (const event of sells) {
+      if (
+        event.blockNumber == null ||
+        !event.transactionHash ||
+        event.args.botOut == null ||
+        event.args.vyntraIn == null
+      ) continue
+      const botAmount = Number(formatEther(event.args.botOut))
+      const tokenAmount = Number(formatEther(event.args.vyntraIn))
+      const price = tokenAmount > 0 ? botAmount / tokenAmount : 0
+      const added = await insertPlatformTrade({
+        side: 'sell',
+        trader: event.args.seller!,
+        botAmount,
+        tokenAmount,
+        price,
+        mcap: price * TOTAL_SUPPLY,
+        blockNumber: Number(event.blockNumber),
+        txHash: event.transactionHash,
+        logIndex: event.logIndex ?? 0,
+        timestamp: await blockTs(event.blockNumber, tsCache),
+      })
+      if (added) inserted++
+    }
+
+    // Persist each chunk so a provider error can resume from the last completed range.
+    await setMeta('last_vyntra_market_block', safeTo.toString())
+    cursor = safeTo + 1n
+    chunks++
   }
 
-  for (const event of sells) {
-    if (
-      event.blockNumber == null ||
-      !event.transactionHash ||
-      event.args.botOut == null ||
-      event.args.vyntraIn == null
-    ) continue
-    const botAmount = Number(formatEther(event.args.botOut))
-    const tokenAmount = Number(formatEther(event.args.vyntraIn))
-    const price = tokenAmount > 0 ? botAmount / tokenAmount : 0
-    const added = await insertPlatformTrade({
-      side: 'sell',
-      trader: event.args.seller!,
-      botAmount,
-      tokenAmount,
-      price,
-      mcap: price * TOTAL_SUPPLY,
-      blockNumber: Number(event.blockNumber),
-      txHash: event.transactionHash,
-      logIndex: event.logIndex ?? 0,
-      timestamp: await blockTs(event.blockNumber, tsCache),
-    })
-    if (added) inserted++
+  if (chunks > 0) {
+    console.log(`[indexer] VYNTRA market indexed ${from}→${cursor - 1n} (+${inserted} trades)`)
   }
-
-  await setMeta('last_vyntra_market_block', safeTo.toString())
   return inserted
 }
 

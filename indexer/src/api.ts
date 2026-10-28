@@ -102,6 +102,7 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   app.use('/v1/*', async (c, next) => {
+    c.header('Cache-Control', 'no-store')
     try {
       await Promise.race([
         ensureSchema(),
@@ -136,7 +137,6 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   app.get('/v1/stats', async (c) => {
-    await maybeSync(false)
     const row = await queryOne<Record<string, number>>(
       `SELECT
         COUNT(*) AS launches,
@@ -161,7 +161,6 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   app.get('/v1/launches', async (c) => {
-    await maybeSync(false)
     const sort = c.req.query('sort') || 'trending'
     const limit = Math.min(Number(c.req.query('limit') || 100), 500)
     const orderBy: Record<string, string> = {
@@ -179,7 +178,6 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   app.get('/v1/launches/:id', async (c) => {
-    await maybeSync(false)
     const id = Number(c.req.param('id'))
     const row = await queryOne<LaunchRow>('SELECT * FROM launches WHERE id = ?', [id])
     if (!row) return c.json({ error: 'not_found' }, 404)
@@ -187,7 +185,6 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   app.get('/v1/launches/:id/trades', async (c) => {
-    await maybeSync(false)
     const id = Number(c.req.param('id'))
     const limit = Math.min(Number(c.req.query('limit') || 1000), 5000)
     const rows = await queryAll<TradeRow>(
@@ -217,7 +214,6 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   app.get('/v1/launches/:id/ohlcv', async (c) => {
-    await maybeSync(false)
     const id = Number(c.req.param('id'))
     const interval = Number(c.req.query('interval') || 300)
     const allowed = new Set([60, 300, 900, 3600, 86400])
@@ -227,7 +223,6 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   app.get('/v1/wallets/:address/portfolio', async (c) => {
-    await maybeSync(false)
     const address = c.req.param('address')
     if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
       return c.json({ error: 'invalid_address' }, 400)
@@ -235,13 +230,12 @@ export function createApp(opts: { basePath?: string } = {}) {
     const data = await getPortfolio(address)
     return c.json({
       ...data,
-      source: 'curve_trades',
-      note: 'PnL uses average cost basis; mark price is last curve trade. Transfers ignored.',
+      source: 'indexed_trades',
+      note: 'PnL uses average cost basis; positions include indexed launch and VYNTRA market trades. Transfers are ignored.',
     })
   })
 
   app.get('/v1/wallets/:address/trades', async (c) => {
-    await maybeSync(false)
     const address = c.req.param('address')
     if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
       return c.json({ error: 'invalid_address' }, 400)
@@ -251,7 +245,6 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   app.get('/v1/launches/:id/holders', async (c) => {
-    await maybeSync(false)
     const id = Number(c.req.param('id'))
     const launch = await queryOne<{ id: number }>('SELECT id FROM launches WHERE id = ?', [id])
     if (!launch) return c.json({ error: 'not_found' }, 404)
@@ -267,7 +260,6 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   app.get('/v1/launches/:id/snipers', async (c) => {
-    await maybeSync(false)
     const id = Number(c.req.param('id'))
     const launch = await queryOne<{ id: number }>('SELECT id FROM launches WHERE id = ?', [id])
     if (!launch) return c.json({ error: 'not_found' }, 404)
@@ -285,7 +277,6 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   app.get('/v1/launches/:id/replies', async (c) => {
-    await maybeSync(false)
     const id = Number(c.req.param('id'))
     const rows = await queryAll(
       `SELECT launch_id, reply_index, author, body, timestamp, tx_hash

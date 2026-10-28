@@ -1,7 +1,8 @@
 import { queryAll } from './db.js'
+import { VYNTRA_MARKET_ADDRESS, VYNTRA_TOKEN_ADDRESS } from './config.js'
 
 export type PortfolioPosition = {
-  launchId: number
+  launchId: number | null
   token: string
   curve: string
   name: string
@@ -93,33 +94,74 @@ export async function getPortfolio(address: string): Promise<{
     }
   }
 
-  const trades = await queryAll<{
-    launch_id: number
-    side: 'buy' | 'sell'
-    bot_amount: number
-    token_amount: number
-    price: number
-    timestamp: number
-    token: string
-    curve: string
-    name: string
-    symbol: string
-    image_uri: string
-    creator: string
-    graduated: number
-    migrated: number
-  }>(
-    `SELECT t.launch_id, t.side, t.bot_amount, t.token_amount, t.price, t.timestamp,
-            l.token, l.curve, l.name, l.symbol, l.image_uri, l.creator, l.graduated, l.migrated
-     FROM trades t
-     JOIN launches l ON l.id = t.launch_id
-     WHERE LOWER(t.trader) = ?
-     ORDER BY t.timestamp ASC, t.id ASC`,
-    [wallet],
+  const [launchTrades, platformTrades] = await Promise.all([
+    queryAll<{
+      launch_id: number
+      side: 'buy' | 'sell'
+      bot_amount: number
+      token_amount: number
+      price: number
+      timestamp: number
+      block_number: number
+      log_index: number
+      token: string
+      curve: string
+      name: string
+      symbol: string
+      image_uri: string
+      creator: string
+      graduated: number
+      migrated: number
+    }>(
+      `SELECT t.launch_id, t.side, t.bot_amount, t.token_amount, t.price, t.timestamp,
+              t.block_number, t.log_index,
+              l.token, l.curve, l.name, l.symbol, l.image_uri, l.creator, l.graduated, l.migrated
+       FROM trades t
+       JOIN launches l ON l.id = t.launch_id
+       WHERE LOWER(t.trader) = ?
+       ORDER BY t.timestamp ASC, t.block_number ASC, t.log_index ASC`,
+      [wallet],
+    ),
+    queryAll<{
+      side: 'buy' | 'sell'
+      bot_amount: number
+      token_amount: number
+      price: number
+      timestamp: number
+      block_number: number
+      log_index: number
+    }>(
+      `SELECT side, bot_amount, token_amount, price, timestamp, block_number, log_index
+       FROM platform_trades
+       WHERE LOWER(trader) = ?
+       ORDER BY timestamp ASC, block_number ASC, log_index ASC`,
+      [wallet],
+    ),
+  ])
+
+  const trades = [
+    ...launchTrades,
+    ...platformTrades.map((t) => ({
+      ...t,
+      launch_id: null,
+      token: VYNTRA_TOKEN_ADDRESS ?? '',
+      curve: VYNTRA_MARKET_ADDRESS ?? '',
+      name: 'Vyntra',
+      symbol: 'VYNTRA',
+      image_uri: '',
+      creator: '',
+      graduated: 0,
+      migrated: 0,
+    })),
+  ].sort(
+    (a, b) =>
+      a.timestamp - b.timestamp ||
+      a.block_number - b.block_number ||
+      a.log_index - b.log_index,
   )
 
   type Acc = {
-    launchId: number
+    launchId: number | null
     token: string
     curve: string
     name: string
@@ -140,10 +182,11 @@ export async function getPortfolio(address: string): Promise<{
     inventory: number
   }
 
-  const byLaunch = new Map<number, Acc>()
+  const byPosition = new Map<string, Acc>()
 
   for (const t of trades) {
-    let acc = byLaunch.get(t.launch_id)
+    const key = t.launch_id === null ? 'platform' : `launch:${t.launch_id}`
+    let acc = byPosition.get(key)
     if (!acc) {
       acc = {
         launchId: t.launch_id,
@@ -166,7 +209,7 @@ export async function getPortfolio(address: string): Promise<{
         realizedPnlBot: 0,
         inventory: 0,
       }
-      byLaunch.set(t.launch_id, acc)
+      byPosition.set(key, acc)
     }
 
     acc.tradeCount += 1
@@ -194,19 +237,29 @@ export async function getPortfolio(address: string): Promise<{
     }
   }
 
-  const lastPrices = await queryAll<{ launch_id: number; price: number }>(
-    `SELECT launch_id, price FROM trades t
-     WHERE t.id IN (
-       SELECT MAX(id) FROM trades GROUP BY launch_id
-     )`,
-  )
+  const [lastPrices, platformPriceRows] = await Promise.all([
+    queryAll<{ launch_id: number; price: number }>(
+      `SELECT launch_id, price FROM trades t
+       WHERE t.id IN (
+         SELECT MAX(id) FROM trades GROUP BY launch_id
+       )`,
+    ),
+    queryAll<{ price: number }>(
+      `SELECT price FROM platform_trades
+       ORDER BY block_number DESC, log_index DESC
+       LIMIT 1`,
+    ),
+  ])
   const priceMap = new Map(lastPrices.map((r) => [r.launch_id, r.price]))
+  const platformLastPrice = platformPriceRows[0]?.price
 
-  const positions: PortfolioPosition[] = [...byLaunch.values()]
+  const positions: PortfolioPosition[] = [...byPosition.values()]
     .map((acc) => {
       const heldToken = Math.max(acc.inventory, 0)
       const avgCostBot = heldToken > 1e-12 ? acc.costBasisBot / heldToken : 0
-      const lastPrice = priceMap.get(acc.launchId) ?? avgCostBot
+      const lastPrice = acc.launchId === null
+        ? platformLastPrice ?? avgCostBot
+        : priceMap.get(acc.launchId) ?? avgCostBot
       const unrealizedPnlBot = heldToken > 0 ? (lastPrice - avgCostBot) * heldToken : 0
       return {
         launchId: acc.launchId,

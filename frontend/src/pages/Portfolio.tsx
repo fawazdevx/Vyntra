@@ -203,8 +203,8 @@ export function Portfolio() {
             <PositionTable title="Closed" rows={closedPositions} empty="" />
           )}
           <p className="text-xs text-[var(--vyntra-faint)]">
-            Average cost basis from curve buys/sells. Mark price is the last indexed trade. Wallet
-            transfers are not counted.
+            Average cost basis from indexed market buys/sells. Mark price is the last indexed trade.
+            Wallet transfers are not counted.
           </p>
         </div>
       ) : (
@@ -331,9 +331,15 @@ function PositionTable({
             </thead>
             <tbody>
               {rows.map((p) => (
-                <tr key={p.launchId} className="border-t border-[var(--vyntra-border)]">
+                <tr
+                  key={p.launchId ?? `platform:${p.token || p.symbol}`}
+                  className="border-t border-[var(--vyntra-border)]"
+                >
                   <td className="px-4 py-3 sm:px-5">
-                    <Link to={`/token/${p.launchId}`} className="flex items-center gap-3 hover:underline">
+                    <Link
+                      to={p.launchId === null ? '/vyntra' : `/token/${p.launchId}`}
+                      className="flex items-center gap-3 hover:underline"
+                    >
                       <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-[var(--vyntra-elev)] text-xs font-bold">
                         {p.imageURI ? (
                           <img src={p.imageURI} alt="" className="h-full w-full object-cover" />

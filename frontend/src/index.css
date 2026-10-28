@@ -4,8 +4,8 @@
 
 :root {
   color-scheme: light;
-  /* Purple Optimus — same layout language, violet paper + cyan companion */
-  --vyntra-bg: #f6f2fc;
+  /* White light theme with violet and cyan accents */
+  --vyntra-bg: #ffffff;
   --vyntra-fg: #1c1233;
   --vyntra-muted: #6b5f82;
   --vyntra-faint: #9a8fb3;
@@ -56,13 +56,7 @@ body {
   font-size: 1rem;
   line-height: 1.5;
   background-color: var(--vyntra-bg);
-  background-image:
-    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(124, 58, 237, 0.14), transparent 55%),
-    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(6, 182, 212, 0.1), transparent 50%),
-    linear-gradient(rgba(109, 40, 217, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(109, 40, 217, 0.04) 1px, transparent 1px);
-  background-size: auto, auto, 64px 64px, 64px 64px;
-  background-attachment: fixed;
+  background-image: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -459,3 +453,133 @@ body {
   color: #faf8ff !important;
 }
 
+/* Landing page motion */
+.landing-enter {
+  animation: landing-rise 720ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.landing-header {
+  animation-delay: 40ms;
+}
+
+.landing-hero-copy > * {
+  animation: landing-rise 760ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.landing-hero-copy > *:nth-child(1) { animation-delay: 80ms; }
+.landing-hero-copy > *:nth-child(2) { animation-delay: 150ms; }
+.landing-hero-copy > *:nth-child(3) { animation-delay: 220ms; }
+.landing-hero-copy > *:nth-child(4) { animation-delay: 290ms; }
+.landing-hero-copy > *:nth-child(5) { animation-delay: 360ms; }
+
+.landing-hero-art {
+  animation-delay: 220ms;
+}
+
+.landing-float {
+  animation: landing-float 7s ease-in-out 900ms infinite;
+}
+
+.landing-ambient-one {
+  animation: landing-glow 9s ease-in-out infinite alternate;
+}
+
+.landing-ambient-two {
+  animation: landing-glow 11s ease-in-out 1.5s infinite alternate-reverse;
+}
+
+.landing-ambient-three {
+  animation: landing-glow 13s ease-in-out 800ms infinite alternate;
+}
+
+[data-vyntra-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 22px, 0);
+  transition:
+    opacity 650ms ease,
+    transform 650ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+[data-vyntra-reveal][data-revealed="true"] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.landing-stagger > [data-vyntra-reveal]:nth-child(2) { transition-delay: 90ms; }
+.landing-stagger > [data-vyntra-reveal]:nth-child(3) { transition-delay: 180ms; }
+.landing-stagger > [data-vyntra-reveal]:nth-child(4) { transition-delay: 270ms; }
+
+.landing-ticker {
+  overflow: hidden;
+  padding-block: 1rem;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.landing-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: landing-marquee 34s linear infinite;
+}
+
+.landing-ticker:hover .landing-ticker-track {
+  animation-play-state: paused;
+}
+
+.landing-ticker-item {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 1rem;
+  padding-inline: 1.6rem;
+  color: var(--vyntra-muted);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes landing-float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -8px, 0); }
+}
+
+@keyframes landing-glow {
+  from { transform: scale(0.94); opacity: 0.7; }
+  to { transform: scale(1.06); opacity: 1; }
+}
+
+@keyframes landing-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-enter,
+  .landing-hero-copy > *,
+  .landing-float,
+  .landing-ambient-one,
+  .landing-ambient-two,
+  .landing-ambient-three,
+  .landing-ticker-track {
+    animation: none;
+  }
+
+  [data-vyntra-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}

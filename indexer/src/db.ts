@@ -1,4 +1,6 @@
-import { createClient, type Client, type InArgs } from '@libsql/client/web'
+// Package conditional exports choose Node support for local file: databases and
+// the Web client for Vercel Edge routes importing this module.
+import { createClient, type Client, type InArgs } from '@libsql/client'
 import { DATABASE_URL, DATABASE_AUTH_TOKEN, hasRemoteDatabase } from './config.js'
 
 const SCHEMA = `

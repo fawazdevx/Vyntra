@@ -90,13 +90,15 @@ turso db tokens create vyntra-indexer
 |------|----------|--------|
 | `FACTORY_ADDRESS` | yes | Live VyntraFactory |
 | `VYNTRA_MARKET_ADDRESS` | recommended | VYNTRA/BOT market; enables platform-token history and includes its volume in aggregate stats |
-| `VYNTRA_MARKET_START_BLOCK` | recommended | Market deployment block; separate checkpoint backfills market events even if the factory index is already current |
+| `VYNTRA_TOKEN_ADDRESS` | recommended | VYNTRA token address; labels platform-token positions in wallet portfolios |
+| `VYNTRA_MARKET_START_BLOCK` | recommended | Market deployment block (the `Seeded` event block is a safe start); separate checkpoint backfills market events even if the factory index is already current |
 | `BOARD_ADDRESS` | optional | Replies |
 | `TURSO_DATABASE_URL` | yes | `libsql://…turso.io` |
 | `TURSO_AUTH_TOKEN` | yes | Turso token |
 | `INDEXER_RPC_URL` | yes | e.g. `https://rpc.bohr.life` |
 | `INDEXER_CHAIN_ID` | yes | `968` testnet / `677` mainnet |
 | `INDEXER_LOG_CHUNK` | optional | Maximum block range per sync batch. Default `2000`. |
+| `INDEXER_MARKET_CATCHUP_CHUNKS` | optional | Platform market ranges per sync: local default `10`, Vercel default `1`. |
 | `CRON_SECRET` | recommended | Random string; Cron sends `Authorization: Bearer …` |
 | `INDEXER_SYNC_STALE_SEC` | optional | Default `20` — request-path sync if older |
 
@@ -129,7 +131,7 @@ curl -s https://<your-indexer-project>.vercel.app/api/health
 
 There is no always-on worker. Sync runs when:
 
-1. **Stale-on-request (primary on Hobby)** — API routes call the sync if `last_sync_at` is older than `INDEXER_SYNC_STALE_SEC` (default 20s). Each sync advances by at most `INDEXER_LOG_CHUNK` blocks (default 2000), so initial backfills resume safely across requests.
+1. **Stale-on-request (primary on Hobby)** — API routes call the sync if `last_sync_at` is older than `INDEXER_SYNC_STALE_SEC` (default 20s). Factory indexing advances by at most `INDEXER_LOG_CHUNK` blocks (default 2000). Platform market indexing also advances one chunk on Vercel; local mode defaults to ten chunks per poll to catch up faster. Each completed range is checkpointed for safe resume.
 2. **Cron (backup)** — `vercel.json` calls `/api/cron/sync` once daily (`0 0 * * *`). Vercel **Hobby** only allows daily crons; `*/5 * * * *` needs **Pro**.
 
 On Hobby you do **not** need Pro for a working indexer — request traffic drives sync. Upgrade Pro only if you want frequent background sync with no traffic.

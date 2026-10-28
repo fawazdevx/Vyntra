@@ -31,6 +31,12 @@ export const VYNTRA_MARKET_ADDRESS = optionalAddress(
     process.env.VITE_SPAWN_MARKET,
 )
 
+export const VYNTRA_TOKEN_ADDRESS = optionalAddress(
+  process.env.VYNTRA_TOKEN_ADDRESS ||
+    process.env.VITE_VYNTRA_TOKEN ||
+    process.env.VITE_SPAWN_TOKEN,
+)
+
 const isVercel = Boolean(process.env.VERCEL)
 
 /** Turso URL on Vercel; local file URL only when not on Vercel. */
@@ -51,6 +57,10 @@ export const API_PORT = Number(process.env.INDEXER_API_PORT || process.env.PORT 
 export const POLL_MS = Number(process.env.INDEXER_POLL_MS || 8_000)
 export const CONFIRMATIONS = Number(process.env.INDEXER_CONFIRMATIONS || 1)
 export const LOG_CHUNK = Number(process.env.INDEXER_LOG_CHUNK || 2_000)
+const marketCatchupChunks = Number(process.env.INDEXER_MARKET_CATCHUP_CHUNKS)
+export const VYNTRA_MARKET_CATCHUP_CHUNKS = Number.isInteger(marketCatchupChunks) && marketCatchupChunks > 0
+  ? marketCatchupChunks
+  : isVercel ? 1 : 10
 export const START_BLOCK = BigInt(process.env.INDEXER_START_BLOCK || '0')
 export const VYNTRA_MARKET_START_BLOCK = BigInt(
   process.env.VYNTRA_MARKET_START_BLOCK || process.env.INDEXER_START_BLOCK || '0',
