@@ -13,6 +13,8 @@ services:
         sync: false
       - key: VYNTRA_TOKEN_ADDRESS
         sync: false
+      - key: BOARD_ADDRESS
+        sync: false
       - key: VYNTRA_MARKET_START_BLOCK
         sync: false
       - key: INDEXER_CHAIN_ID

@@ -3,6 +3,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { Sparkles, Rocket, LayoutDashboard, Briefcase, ArrowRightLeft, ExternalLink } from 'lucide-react'
 import { isAppConfigured, VYNTRA_LOGO } from '../lib/config'
+import { activeChain } from '../lib/chains'
 import { ThemeToggle } from './ThemeToggle'
 
 const nav = [
@@ -64,7 +65,7 @@ export function Layout() {
             <div className="flex items-center gap-2 sm:gap-3">
               <span className="chip-live hidden sm:inline-flex">
                 <span className="h-1.5 w-1.5 rounded-full bg-[var(--vyntra-success)]" />
-                Testnet
+                {activeChain.testnet ? 'Testnet' : 'Mainnet'}
               </span>
               <ThemeToggle />
               <ConnectButton showBalance={false} chainStatus="icon" accountStatus="address" />
@@ -197,7 +198,7 @@ export function Layout() {
 
           <div className="mt-10 flex flex-col items-start justify-between gap-3 border-t border-[var(--vyntra-border)] pt-6 text-xs text-[var(--vyntra-faint)] sm:flex-row sm:items-center">
             <p>© {year} Vyntra. Built on BOT Chain.</p>
-            <p>Testnet</p>
+            <p>{activeChain.testnet ? 'Testnet' : 'Mainnet'}</p>
           </div>
         </div>
       </footer>

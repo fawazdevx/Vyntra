@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { explorerAddress, formatBot, shortAddr } from '../lib/config'
-import { botTestnet } from '../lib/chains'
+import { activeChain } from '../lib/chains'
 import {
   fetchHoldersFromIndexer,
   fetchSnipersFromIndexer,
@@ -178,7 +178,7 @@ export function HoldersPanel({ launchId, symbol, trades }: Props) {
                       </td>
                       <td className="px-2 py-3">
                         <a
-                          href={explorerAddress(h.address, botTestnet.id)}
+                          href={explorerAddress(h.address, activeChain.id)}
                           target="_blank"
                           rel="noreferrer"
                           className="font-mono text-[var(--vyntra-fg)] hover:underline"
@@ -258,7 +258,7 @@ export function HoldersPanel({ launchId, symbol, trades }: Props) {
                       </td>
                       <td className="px-2 py-3">
                         <a
-                          href={explorerAddress(s.address, botTestnet.id)}
+                          href={explorerAddress(s.address, activeChain.id)}
                           target="_blank"
                           rel="noreferrer"
                           className="font-mono text-[var(--vyntra-fg)] hover:underline"

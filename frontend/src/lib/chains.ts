@@ -24,3 +24,13 @@ export const botMainnet = defineChain({
     default: { name: 'BOT Scan', url: 'https://scan.botchain.ai' },
   },
 })
+
+const configuredChainId = Number(import.meta.env.VITE_CHAIN_ID || botTestnet.id)
+
+if (configuredChainId !== botTestnet.id && configuredChainId !== botMainnet.id) {
+  throw new Error('VITE_CHAIN_ID must be 968 (testnet) or 677 (mainnet).')
+}
+
+/** The frontend build targets one chain so reads, writes, and explorer links stay aligned. */
+export const activeChain = configuredChainId === botMainnet.id ? botMainnet : botTestnet
+export const isMainnet = activeChain.id === botMainnet.id

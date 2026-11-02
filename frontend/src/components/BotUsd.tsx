@@ -1,4 +1,5 @@
 import { useBotUsdPrice } from '../hooks/useBotUsdPrice'
+import { isMainnet } from '../lib/chains'
 
 function formatUsd(value: number) {
   const abs = Math.abs(value)
@@ -20,7 +21,12 @@ export function BotUsd({ value, className }: { value: number; className?: string
   return (
     <span
       className={className ?? 'block text-xs font-normal text-[var(--vyntra-muted)]'}
-      title={`Estimate using the current BOT Chain mainnet WBOT price (${formatUsd(data.priceUsd)} per BOT). Testnet BOT has no guaranteed dollar value.`}
+      title={
+        'Estimate using the current BOT Chain mainnet WBOT price from GeckoTerminal (' +
+        formatUsd(data.priceUsd) +
+        ' per BOT).' +
+        (isMainnet ? '' : ' Testnet BOT has no guaranteed dollar value.')
+      }
     >
       ≈ {formatUsd(usd)}
     </span>

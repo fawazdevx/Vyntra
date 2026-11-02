@@ -1,6 +1,6 @@
 import { explorerTx, formatBot, shortAddr } from '../lib/config'
 import type { TradePoint } from '../hooks/useTradeHistory'
-import { botTestnet } from '../lib/chains'
+import { activeChain } from '../lib/chains'
 import { BotUsd } from './BotUsd'
 
 type Props = {
@@ -58,7 +58,7 @@ export function TradeTape({ trades, symbol }: Props) {
                   </td>
                   <td className="px-4 py-3 text-right sm:px-5">
                     <a
-                      href={explorerTx(t.txHash, botTestnet.id)}
+                      href={explorerTx(t.txHash, activeChain.id)}
                       target="_blank"
                       rel="noreferrer"
                       className="font-mono text-zinc-500 hover:text-violet-300"

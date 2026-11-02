@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAccount } from 'wagmi'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Briefcase, ExternalLink } from 'lucide-react'
-import { botTestnet } from '../lib/chains'
+import { activeChain } from '../lib/chains'
 import { BotUsd } from '../components/BotUsd'
 import { explorerTx, formatBot, shortAddr } from '../lib/config'
 import {
@@ -253,7 +253,7 @@ export function Portfolio() {
                       </td>
                       <td className="px-4 py-3 text-right sm:px-5">
                         <a
-                          href={explorerTx(t.txHash, botTestnet.id)}
+                          href={explorerTx(t.txHash, activeChain.id)}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 font-mono text-[var(--vyntra-muted)] hover:text-[var(--vyntra-fg)]"

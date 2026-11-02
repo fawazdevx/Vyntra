@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { BotUsd } from '../components/BotUsd'
 import { VYNTRA_LOGO } from '../lib/config'
+import { activeChain, isMainnet } from '../lib/chains'
 import { fetchStatsFromIndexer, isIndexerConfigured } from '../lib/indexer'
 
 function formatVolume(value: number) {
@@ -129,7 +130,9 @@ export function Landing() {
           <div className="grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr]">
             <div className="landing-hero-copy">
               <div className="inline-flex items-center gap-2 rounded-full border border-[var(--vyntra-border)] bg-[var(--vyntra-card)] px-3 py-1.5">
-                <span className="chip-live !border-0 !bg-transparent !px-0 !py-0">Live on BOT testnet</span>
+                <span className="chip-live !border-0 !bg-transparent !px-0 !py-0">
+                  Live on BOT Chain {isMainnet ? 'mainnet' : 'testnet'}
+                </span>
               </div>
               <h1 className="page-title mt-6 text-5xl sm:text-6xl lg:text-7xl">
                 Launch memes.
@@ -193,13 +196,13 @@ export function Landing() {
 
         <section
           className="landing-activity mx-auto max-w-7xl px-4 pb-12 sm:px-6 lg:px-8"
-          aria-label="Vyntra testnet trading activity"
+          aria-label={'Vyntra ' + activeChain.name + ' trading activity'}
           aria-busy={statsQuery.isFetching}
           data-vyntra-reveal=""
         >
           <div className="card grid gap-5 p-5 sm:grid-cols-2 sm:items-center sm:p-6 lg:grid-cols-[1fr_auto_auto] lg:gap-10">
             <div className="sm:col-span-2 lg:col-span-1">
-              <p className="page-kicker">BOT Chain Testnet activity</p>
+              <p className="page-kicker">BOT Chain {isMainnet ? 'Mainnet' : 'Testnet'} activity</p>
               <h2 className="mt-1 text-xl font-semibold tracking-tight">All-time Vyntra trading</h2>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--vyntra-muted)]">
                 Combined BOT volume across launch-curve tokens and the $VYNTRA platform-token market.
@@ -241,7 +244,9 @@ export function Landing() {
             </div>
 
             <p className="text-[11px] leading-relaxed text-[var(--vyntra-faint)] sm:col-span-2 lg:col-span-3">
-              USD is an estimate using the BOT Chain mainnet WBOT reference price. Testnet BOT has no guaranteed dollar value.
+              {isMainnet
+                ? 'USD estimates use the current BOT Chain mainnet WBOT reference price.'
+                : 'USD estimates use the current mainnet WBOT reference price; testnet BOT has no guaranteed dollar value.'}
             </p>
           </div>
         </section>

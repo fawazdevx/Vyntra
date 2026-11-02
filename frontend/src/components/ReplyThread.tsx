@@ -10,7 +10,7 @@ import {
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { MessageCircle, Send } from 'lucide-react'
 import { vyntraBoardAbi } from '../lib/abis'
-import { botTestnet } from '../lib/chains'
+import { activeChain } from '../lib/chains'
 import { BOARD_ADDRESS, isBoardConfigured, shortAddr } from '../lib/config'
 import { formatUserError } from '../lib/errors'
 
@@ -64,7 +64,7 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract()
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash })
-  const onWrongChain = isConnected && chainId !== botTestnet.id
+  const onWrongChain = isConnected && chainId !== activeChain.id
 
   useEffect(() => {
     if (!isSuccess) return
@@ -100,7 +100,7 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
       abi: vyntraBoardAbi,
       functionName: 'postReply',
       args: [BigInt(launchId), trimmed],
-      chainId: botTestnet.id,
+      chainId: activeChain.id,
     })
   }
 
@@ -144,7 +144,7 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
               type="button"
               className="btn-ghost px-3 py-2 text-sm"
               disabled={switching}
-              onClick={() => switchChain({ chainId: botTestnet.id })}
+              onClick={() => switchChain({ chainId: activeChain.id })}
             >
               Switch network
             </button>

@@ -19,7 +19,7 @@ import {
 } from 'lightweight-charts'
 import type { TradePoint } from '../hooks/useTradeHistory'
 import { BotUsd } from './BotUsd'
-import { botTestnet } from '../lib/chains'
+import { activeChain, isMainnet } from '../lib/chains'
 
 
 function chartTheme(mode: 'light' | 'dark') {
@@ -619,12 +619,12 @@ export function PriceChart({
   const emptyOverlay = loading && noTradeHistory
     ? {
         title: 'Loading chart data',
-        message: 'Fetching recent trades from the testnet.',
+        message: 'Fetching recent trades from ' + activeChain.name + '.',
       }
     : error && noTradeHistory
       ? {
           title: 'Chart data unavailable',
-          message: 'Could not fetch testnet trades. Try loading them again.',
+          message: 'Could not fetch ' + activeChain.name + ' trades. Try loading them again.',
         }
       : !loading && !error && noTradeHistory
         ? {
@@ -652,7 +652,7 @@ export function PriceChart({
               {metricLabel}
             </span>
             <span className="rounded border border-amber-400/25 bg-amber-400/[0.08] px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-amber-300">
-              {botTestnet.name}
+              {activeChain.name}
             </span>
             <span className="inline-flex items-center gap-1.5 rounded border border-[var(--vyntra-border)] px-2 py-1 font-mono text-[10px] text-[var(--vyntra-muted)]">
               <span className={`h-1.5 w-1.5 rounded-full ${error ? 'bg-rose-400' : loading ? 'animate-pulse bg-amber-300' : 'bg-[var(--vyntra-success)]'}`} />
@@ -748,7 +748,9 @@ export function PriceChart({
             </div>
           </div>
           <p className="text-[10px] leading-4 text-[var(--vyntra-faint)]">
-            USD is an estimate using the mainnet BOT reference price; testnet BOT has no market-set dollar value.
+            {isMainnet
+              ? 'USD estimates use the current BOT Chain mainnet WBOT reference price.'
+              : 'USD estimates use the current mainnet WBOT reference price; testnet BOT has no market-set dollar value.'}
           </p>
         </div>
       </div>
@@ -779,7 +781,7 @@ export function PriceChart({
         <div className="min-w-0 px-3 py-3 sm:px-4">
           <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">24h trades</p>
           <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.trades24h.toLocaleString()}</p>
-          <p className="mt-1 text-[10px] text-[var(--vyntra-faint)]">On BOT Chain Testnet</p>
+          <p className="mt-1 text-[10px] text-[var(--vyntra-faint)]">On {activeChain.name}</p>
         </div>
       </div>
 

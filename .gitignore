@@ -21,6 +21,7 @@ docs/
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+!frontend/.env.mainnet.example
 
 # Frontend build / deps
 frontend/node_modules/
@@ -35,6 +36,7 @@ slither-report.*
 indexer/node_modules/
 indexer/data/
 indexer/.env
+!indexer/.env.mainnet.example
 indexer/dist/
 
 # IDE / OS

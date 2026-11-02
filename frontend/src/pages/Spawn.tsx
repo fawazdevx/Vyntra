@@ -13,7 +13,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Rocket, Sparkles, Info, ExternalLink } from 'lucide-react'
 import { ImageUpload } from '../components/ImageUpload'
 import { spawnFactoryAbi } from '../lib/abis'
-import { botTestnet } from '../lib/chains'
+import { activeChain } from '../lib/chains'
 import { explorerTx, FACTORY_ADDRESS } from '../lib/config'
 import { formatUserError } from '../lib/errors'
 import { BotUsd } from '../components/BotUsd'
@@ -72,7 +72,7 @@ export function Spawn() {
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract()
   const { isLoading: confirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
-  const onWrongChain = isConnected && chainId !== botTestnet.id
+  const onWrongChain = isConnected && chainId !== activeChain.id
   const initials = (symbol || name || '??').slice(0, 2).toUpperCase()
 
   const splitTotal = fundsBps + buybackBps + dividendsBps + liquidityBps
@@ -196,7 +196,7 @@ export function Spawn() {
         ...taxArgs,
       ],
       value: seedBuy && Number(seedBuy) > 0 ? parseEther(seedBuy) : 0n,
-      chainId: botTestnet.id,
+      chainId: activeChain.id,
     })
   }
 
@@ -450,7 +450,7 @@ export function Spawn() {
               type="button"
               className="btn-primary w-full py-3.5"
               disabled={switching}
-              onClick={() => switchChain({ chainId: botTestnet.id })}
+              onClick={() => switchChain({ chainId: activeChain.id })}
             >
               {switching ? 'Switching…' : 'Switch to BOT Chain'}
             </button>
@@ -474,7 +474,7 @@ export function Spawn() {
           )}
           {hash && (
             <a
-              href={explorerTx(hash, botTestnet.id)}
+              href={explorerTx(hash, activeChain.id)}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 font-mono text-xs text-[var(--vyntra-muted)] hover:underline"
@@ -521,7 +521,7 @@ export function Spawn() {
                   Tax {(buyTaxBps / 100).toFixed(0)}%/{(sellTaxBps / 100).toFixed(0)}%
                 </span>
               )}
-              <span className="chip-live">Testnet</span>
+              <span className="chip-live">{activeChain.testnet ? 'Testnet' : 'Mainnet'}</span>
               {agentMode && <span className="chip-demo">Agent</span>}
             </div>
           </div>

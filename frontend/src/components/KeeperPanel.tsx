@@ -9,7 +9,7 @@ import {
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { RefreshCw, Zap } from 'lucide-react'
 import { vyntraKeeperAbi } from '../lib/abis'
-import { botTestnet } from '../lib/chains'
+import { activeChain } from '../lib/chains'
 import { useLaunches } from '../hooks/useLaunches'
 import { explorerTx, isKeeperConfigured, KEEPER_ADDRESS, ZERO_ADDRESS } from '../lib/config'
 import { formatUserError } from '../lib/errors'
@@ -24,7 +24,7 @@ export function KeeperPanel() {
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract()
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash })
-  const onWrongChain = isConnected && chainId !== botTestnet.id
+  const onWrongChain = isConnected && chainId !== activeChain.id
 
   const { curves, splitters } = useMemo(() => {
     const curves: `0x${string}`[] = []
@@ -60,7 +60,7 @@ export function KeeperPanel() {
       abi: vyntraKeeperAbi,
       functionName: 'sweepAll',
       args: [curves, splitters, 0n],
-      chainId: botTestnet.id,
+      chainId: activeChain.id,
     })
   }
 
@@ -102,7 +102,7 @@ export function KeeperPanel() {
               type="button"
               className="btn-ghost px-3 py-2 text-sm"
               disabled={switching}
-              onClick={() => switchChain({ chainId: botTestnet.id })}
+              onClick={() => switchChain({ chainId: activeChain.id })}
             >
               Switch network
             </button>
@@ -145,7 +145,7 @@ export function KeeperPanel() {
           Sweep confirmed.{' '}
           {hash && (
             <a
-              href={explorerTx(hash, botTestnet.id)}
+              href={explorerTx(hash, activeChain.id)}
               target="_blank"
               rel="noreferrer"
               className="underline"

@@ -17,7 +17,7 @@ import { TradeTape } from '../components/TradeTape'
 import { HoldersPanel } from '../components/HoldersPanel'
 import { ReplyThread } from '../components/ReplyThread'
 import { erc20Abi, vyntraMarketAbi } from '../lib/abis'
-import { botTestnet } from '../lib/chains'
+import { activeChain } from '../lib/chains'
 import {
   BUYBACK_VAULT,
   explorerAddress,
@@ -64,7 +64,7 @@ export function Platform() {
   const [copied, setCopied] = useState<string | null>(null)
 
   const configured = Boolean(VYNTRA_TOKEN && VYNTRA_MARKET)
-  const onWrongChain = isConnected && chainId !== botTestnet.id
+  const onWrongChain = isConnected && chainId !== activeChain.id
 
   const {
     data: trades = [],
@@ -75,7 +75,7 @@ export function Platform() {
 
   const { data: botBalance } = useBalance({
     address,
-    chainId: botTestnet.id,
+    chainId: activeChain.id,
     query: { enabled: Boolean(address) },
   })
 
@@ -187,7 +187,7 @@ export function Platform() {
         functionName: 'buyVyntra',
         args: [minOut],
         value: parsedAmount,
-        chainId: botTestnet.id,
+        chainId: activeChain.id,
       })
       return
     }
@@ -198,7 +198,7 @@ export function Platform() {
         abi: erc20Abi,
         functionName: 'approve',
         args: [VYNTRA_MARKET, maxUint256],
-        chainId: botTestnet.id,
+        chainId: activeChain.id,
       })
       return
     }
@@ -209,7 +209,7 @@ export function Platform() {
       abi: vyntraMarketAbi,
       functionName: 'sellVyntra',
       args: [parsedAmount, minOut],
-      chainId: botTestnet.id,
+      chainId: activeChain.id,
     })
   }
 
@@ -465,7 +465,7 @@ export function Platform() {
                 type="button"
                 className="btn-primary w-full"
                 disabled={switching}
-                onClick={() => switchChain({ chainId: botTestnet.id })}
+                onClick={() => switchChain({ chainId: activeChain.id })}
               >
                 {switching ? 'Switching…' : 'Switch to BOT Chain'}
               </button>
@@ -499,7 +499,7 @@ export function Platform() {
           )}
           {hash && (
             <a
-              href={explorerTx(hash, botTestnet.id)}
+              href={explorerTx(hash, activeChain.id)}
               target="_blank"
               rel="noreferrer"
               className="mt-2 inline-flex w-full items-center justify-center gap-1.5 font-mono text-sm text-[var(--vyntra-muted)] hover:text-[var(--vyntra-primary)]"
@@ -539,7 +539,7 @@ function AddrRow({ label, addr }: { label: string; addr: string }) {
     <div className="flex items-center justify-between gap-2">
       <span className="text-[var(--vyntra-muted)]">{label}</span>
       <a
-        href={explorerAddress(addr, botTestnet.id)}
+        href={explorerAddress(addr, activeChain.id)}
         target="_blank"
         rel="noreferrer"
         className="inline-flex items-center gap-1.5 font-mono text-[var(--vyntra-fg)] hover:text-[var(--vyntra-primary)]"

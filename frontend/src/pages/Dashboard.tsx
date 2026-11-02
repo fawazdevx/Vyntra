@@ -11,7 +11,7 @@ import {
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Coins, ExternalLink, Wallet, TrendingUp, Layers } from 'lucide-react'
 import { bondingCurveAbi, revenueSplitterAbi } from '../lib/abis'
-import { botTestnet } from '../lib/chains'
+import { activeChain } from '../lib/chains'
 import { useCreatorLaunches } from '../hooks/useLaunches'
 import { explorerTx, formatBot, shortAddr, type LaunchView } from '../lib/config'
 import { formatUserError } from '../lib/errors'
@@ -32,7 +32,7 @@ export function Dashboard() {
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract()
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  const onWrongChain = isConnected && chainId !== botTestnet.id
+  const onWrongChain = isConnected && chainId !== activeChain.id
   const totalFeesEst = launches.reduce((sum, l) => sum + Number(l.creatorFees) / 1e18, 0)
   const graduated = launches.filter((l) => l.graduated).length
   const shown = isConnected ? launches : []
@@ -106,7 +106,7 @@ export function Dashboard() {
         address: curve,
         abi: bondingCurveAbi,
         functionName: 'claimCreatorFees',
-        chainId: botTestnet.id,
+        chainId: activeChain.id,
       })
     })
   }
@@ -120,7 +120,7 @@ export function Dashboard() {
           address: launch.splitter,
           abi: revenueSplitterAbi,
           functionName: 'claimFunds',
-          chainId: botTestnet.id,
+          chainId: activeChain.id,
         })
       } else if (kind === 'buyback') {
         writeContract({
@@ -128,14 +128,14 @@ export function Dashboard() {
           abi: revenueSplitterAbi,
           functionName: 'buyAndBurnMeme',
           args: [accruals.buyback, 0n],
-          chainId: botTestnet.id,
+          chainId: activeChain.id,
         })
       } else if (kind === 'dividends') {
         writeContract({
           address: launch.splitter,
           abi: revenueSplitterAbi,
           functionName: 'claimDividends',
-          chainId: botTestnet.id,
+          chainId: activeChain.id,
         })
       } else if (kind === 'liquidity') {
         writeContract({
@@ -143,7 +143,7 @@ export function Dashboard() {
           abi: revenueSplitterAbi,
           functionName: 'injectLiquidity',
           args: [accruals.liquidity],
-          chainId: botTestnet.id,
+          chainId: activeChain.id,
         })
       }
     })
@@ -166,7 +166,7 @@ export function Dashboard() {
               type="button"
               className="btn-ghost"
               disabled={switching}
-              onClick={() => switchChain({ chainId: botTestnet.id })}
+              onClick={() => switchChain({ chainId: activeChain.id })}
             >
               Switch network
             </button>
@@ -340,7 +340,7 @@ export function Dashboard() {
           Claim confirmed.{' '}
           {hash && (
             <a
-              href={explorerTx(hash, botTestnet.id)}
+              href={explorerTx(hash, activeChain.id)}
               target="_blank"
               rel="noreferrer"
               className="underline"

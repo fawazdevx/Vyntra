@@ -13,11 +13,12 @@ import { parseEther, formatEther, maxUint256, zeroAddress } from 'viem'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { ArrowLeft, Copy, ExternalLink, Star } from 'lucide-react'
 import { bondingCurveAbi, erc20Abi } from '../lib/abis'
-import { botTestnet } from '../lib/chains'
+import { activeChain, isMainnet } from '../lib/chains'
 import { useLaunch } from '../hooks/useLaunches'
 import { useTradeHistory } from '../hooks/useTradeHistory'
 import { useWatchlist } from '../hooks/useWatchlist'
 import { PriceChart } from '../components/PriceChart'
+import { GeckoTerminalChart } from '../components/GeckoTerminalChart'
 import { TradeTape } from '../components/TradeTape'
 import { HoldersPanel } from '../components/HoldersPanel'
 import { ReplyThread } from '../components/ReplyThread'
@@ -77,7 +78,7 @@ export function Token() {
 
   const { data: botBalance } = useBalance({
     address,
-    chainId: botTestnet.id,
+    chainId: activeChain.id,
     query: { enabled: Boolean(address) },
   })
 
@@ -181,7 +182,7 @@ export function Token() {
   const { writeContractAsync, data: hash, isPending, error: writeError, reset } = useWriteContract()
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash })
 
-  const onWrongChain = isConnected && chainId !== botTestnet.id
+  const onWrongChain = isConnected && chainId !== activeChain.id
   const progress = launch ? Math.min(100, launch.progressBps / 100) : 0
 
   const spot = useMemo(() => {
@@ -267,7 +268,7 @@ export function Token() {
           functionName: 'buy',
           args: [0n, zeroAddress],
           value: parsedAmount,
-          chainId: botTestnet.id,
+          chainId: activeChain.id,
         })
       } else {
         if (needsApprove) {
@@ -276,7 +277,7 @@ export function Token() {
             abi: erc20Abi,
             functionName: 'approve',
             args: [launch.curve, maxUint256],
-            chainId: botTestnet.id,
+            chainId: activeChain.id,
           })
           await refetchAllowance()
           setMsg('Approved. Confirm the sell…')
@@ -286,7 +287,7 @@ export function Token() {
           abi: bondingCurveAbi,
           functionName: 'sell',
           args: [parsedAmount, 0n],
-          chainId: botTestnet.id,
+          chainId: activeChain.id,
         })
       }
       await Promise.all([refetch(), refetchGraduated(), refetchTokenBal()])
@@ -344,7 +345,7 @@ export function Token() {
             {isWatched(launch.id) ? 'Watching' : 'Watch'}
           </button>
           <ShareCard launch={launch} compact />
-          <span className="chip">Testnet</span>
+          <span className="chip">{activeChain.testnet ? 'Testnet' : 'Mainnet'}</span>
           {hasTax && (
             <span className="chip">
               Tax {(launch.buyTaxBps / 100).toFixed(0)}%/{(launch.sellTaxBps / 100).toFixed(0)}%
@@ -434,6 +435,9 @@ export function Token() {
             error={tradesError}
             onRetry={() => void refetchTrades()}
           />
+          {isMainnet && isMigrated && externalPair !== zeroAddress && (
+            <GeckoTerminalChart poolAddress={externalPair} />
+          )}
           {!tradesLoading && !(tradesError && trades.length === 0) && (
             <TradeTape trades={trades} symbol={launch.symbol} />
           )}
@@ -473,15 +477,15 @@ export function Token() {
               <div className="mb-4 space-y-3 rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] px-4 py-3 text-sm">
                 <div className="font-semibold text-[var(--vyntra-fg)]">Trading closed on Vyntra</div>
                 <p className="leading-relaxed text-[var(--vyntra-muted)]">
-                  This launch already migrated LP to a BDEX V2 pair, so the bonding curve can no longer
-                  buy or sell. Newer launches stay tradeable on Vyntra after graduation. To trade this
-                  token outside Vyntra, import the contract on BDEX (mainnet — testnet listing is limited).
+                  This launch migrated liquidity to a BDEX V2 pool, so the bonding curve can no longer
+                  buy or sell this token. Newer launches stay tradeable on Vyntra after graduation. Use
+                  the pool link below to view the migrated market.
                 </p>
                 {externalPair !== zeroAddress && (
                   <p className="font-mono text-xs text-[var(--vyntra-faint)]">
                     Pair{' '}
                     <a
-                      href={explorerAddress(externalPair)}
+                      href={explorerAddress(externalPair, activeChain.id)}
                       target="_blank"
                       rel="noreferrer"
                       className="underline hover:text-[var(--vyntra-fg)]"
@@ -501,7 +505,7 @@ export function Token() {
                   </button>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <a
-                      href={explorerAddress(launch.token)}
+                      href={explorerAddress(launch.token, activeChain.id)}
                       target="_blank"
                       rel="noreferrer"
                       className="btn-ghost inline-flex flex-1 justify-center"
@@ -616,7 +620,7 @@ export function Token() {
                   type="button"
                   className="btn-primary w-full"
                   disabled={switching}
-                  onClick={() => switchChain({ chainId: botTestnet.id })}
+                  onClick={() => switchChain({ chainId: activeChain.id })}
                 >
                   {switching ? 'Switching…' : 'Switch to BOT Chain'}
                 </button>
@@ -653,7 +657,7 @@ export function Token() {
             {isSuccess && <p className="mt-3 text-center text-sm text-emerald-400">Trade confirmed</p>}
             {hash && (
               <a
-                href={explorerTx(hash, botTestnet.id)}
+                href={explorerTx(hash, activeChain.id)}
                 target="_blank"
                 rel="noreferrer"
                 className="mt-2 inline-flex w-full items-center justify-center gap-1.5 font-mono text-sm text-zinc-500 hover:text-cyan-300"
@@ -715,7 +719,7 @@ function AddrRow({ label, addr }: { label: string; addr: string }) {
     <div className="flex items-center justify-between gap-2">
       <span>{label}</span>
       <a
-        href={explorerAddress(addr, botTestnet.id)}
+        href={explorerAddress(addr, activeChain.id)}
         target="_blank"
         rel="noreferrer"
         className="inline-flex items-center gap-1.5 font-mono text-zinc-300 hover:text-cyan-300"
