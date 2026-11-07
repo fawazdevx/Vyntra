@@ -29,7 +29,7 @@ contract VyntraFeeRouter is ReentrancyGuard {
         emit Received(msg.sender, msg.value);
     }
 
-    /// @notice Permissionless split of accrued protocol BOT: 80% buyback / 20% ops.
+    /// @notice Permissionless split of accrued protocol HYPE: 80% buyback / 20% ops.
     function distribute() external nonReentrant {
         _distribute();
     }

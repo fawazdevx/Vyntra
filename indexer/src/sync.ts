@@ -1,5 +1,5 @@
 import { createPublicClient, formatEther, http, type Address } from 'viem'
-import { boardAbi, curveAbi, erc20MetaAbi, factoryAbi, vyntraMarketAbi } from './abis.js'
+import { boardAbi, curveAbi, erc20MetaAbi, factoryAbi, reserveVaultAbi, vyntraMarketAbi } from './abis.js'
 import {
   BOARD_ADDRESS,
   CHAIN_ID,
@@ -10,6 +10,9 @@ import {
   VYNTRA_MARKET_ADDRESS,
   VYNTRA_MARKET_CATCHUP_CHUNKS,
   VYNTRA_MARKET_START_BLOCK,
+  VYNTRA_RESERVE_CATCHUP_CHUNKS,
+  VYNTRA_RESERVE_START_BLOCK,
+  VYNTRA_RESERVE_VAULT_ADDRESS,
   requireFactory,
 } from './config.js'
 import { execute, getMeta, queryAll, queryOne, setMeta, type LaunchRow } from './db.js'
@@ -19,8 +22,8 @@ const TOTAL_SUPPLY = 1_000_000_000
 const client = createPublicClient({
   chain: {
     id: CHAIN_ID,
-    name: 'BOT',
-    nativeCurrency: { name: 'BOT', symbol: 'BOT', decimals: 18 },
+    name: 'HYPE',
+    nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 },
     rpcUrls: { default: { http: [RPC_URL] } },
   },
   transport: http(RPC_URL),
@@ -69,7 +72,7 @@ async function refreshLaunchState(id: number, token: Address, curve: Address) {
     graduated,
     migrated,
     externalPair,
-    realBotReserves,
+    realNativeReserves,
     buyTaxBps,
     sellTaxBps,
     imageURI,
@@ -81,7 +84,7 @@ async function refreshLaunchState(id: number, token: Address, curve: Address) {
     client
       .readContract({ address: curve, abi: curveAbi, functionName: 'externalPair' })
       .catch(() => '0x0000000000000000000000000000000000000000' as Address),
-    client.readContract({ address: curve, abi: curveAbi, functionName: 'realBotReserves' }),
+    client.readContract({ address: curve, abi: curveAbi, functionName: 'realNativeReserves' }),
     client.readContract({ address: curve, abi: curveAbi, functionName: 'buyTaxBps' }).catch(() => 0n),
     client.readContract({ address: curve, abi: curveAbi, functionName: 'sellTaxBps' }).catch(() => 0n),
     client
@@ -94,7 +97,7 @@ async function refreshLaunchState(id: number, token: Address, curve: Address) {
 
   await execute(
     `UPDATE launches SET
-      progress_bps=?, graduated=?, migrated=?, external_pair=?, raised_bot=?,
+      progress_bps=?, graduated=?, migrated=?, external_pair=?, raised_native=?,
       buy_tax_bps=?, sell_tax_bps=?, image_uri=COALESCE(NULLIF(?, ''), image_uri),
       description=?, updated_at=?
      WHERE id=?`,
@@ -103,7 +106,7 @@ async function refreshLaunchState(id: number, token: Address, curve: Address) {
       graduated ? 1 : 0,
       migrated ? 1 : 0,
       externalPair,
-      Number(formatEther(realBotReserves)),
+      Number(formatEther(realNativeReserves)),
       Number(buyTaxBps),
       Number(sellTaxBps),
       imageURI || '',
@@ -119,7 +122,7 @@ async function insertTrade(row: {
   curve: string
   side: 'buy' | 'sell'
   trader: string
-  botAmount: number
+  nativeAmount: number
   tokenAmount: number
   fee: number
   price: number
@@ -131,7 +134,7 @@ async function insertTrade(row: {
 }) {
   const info = await execute(
     `INSERT OR IGNORE INTO trades (
-      launch_id, curve, side, trader, bot_amount, token_amount, fee, price, mcap,
+      launch_id, curve, side, trader, native_amount, token_amount, fee, price, mcap,
       block_number, tx_hash, log_index, timestamp
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
@@ -139,7 +142,7 @@ async function insertTrade(row: {
       row.curve,
       row.side,
       row.trader,
-      row.botAmount,
+      row.nativeAmount,
       row.tokenAmount,
       row.fee,
       row.price,
@@ -155,10 +158,10 @@ async function insertTrade(row: {
     await execute(
       `UPDATE launches SET
         trade_count = trade_count + 1,
-        volume_bot = volume_bot + ?,
+        volume_native = volume_native + ?,
         updated_at = ?
        WHERE id = ?`,
-      [row.botAmount, Math.floor(Date.now() / 1000), row.launchId],
+      [row.nativeAmount, Math.floor(Date.now() / 1000), row.launchId],
     )
   }
 }
@@ -176,7 +179,7 @@ async function blockTs(blockNumber: bigint, cache: Map<string, number>) {
 async function insertPlatformTrade(row: {
   side: 'buy' | 'sell'
   trader: string
-  botAmount: number
+  nativeAmount: number
   tokenAmount: number
   price: number
   mcap: number
@@ -187,13 +190,13 @@ async function insertPlatformTrade(row: {
 }) {
   const info = await execute(
     `INSERT OR IGNORE INTO platform_trades (
-      side, trader, bot_amount, token_amount, fee, price, mcap,
+      side, trader, native_amount, token_amount, fee, price, mcap,
       block_number, tx_hash, log_index, timestamp
     ) VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
     [
       row.side,
       row.trader,
-      row.botAmount,
+      row.nativeAmount,
       row.tokenAmount,
       row.price,
       row.mcap,
@@ -243,16 +246,16 @@ async function syncVyntraMarketTrades(
       if (
         event.blockNumber == null ||
         !event.transactionHash ||
-        event.args.botIn == null ||
+        event.args.nativeIn == null ||
         event.args.vyntraOut == null
       ) continue
-      const botAmount = Number(formatEther(event.args.botIn))
+      const nativeAmount = Number(formatEther(event.args.nativeIn))
       const tokenAmount = Number(formatEther(event.args.vyntraOut))
-      const price = tokenAmount > 0 ? botAmount / tokenAmount : 0
+      const price = tokenAmount > 0 ? nativeAmount / tokenAmount : 0
       const added = await insertPlatformTrade({
         side: 'buy',
         trader: event.args.buyer!,
-        botAmount,
+        nativeAmount,
         tokenAmount,
         price,
         mcap: price * TOTAL_SUPPLY,
@@ -268,16 +271,16 @@ async function syncVyntraMarketTrades(
       if (
         event.blockNumber == null ||
         !event.transactionHash ||
-        event.args.botOut == null ||
+        event.args.nativeOut == null ||
         event.args.vyntraIn == null
       ) continue
-      const botAmount = Number(formatEther(event.args.botOut))
+      const nativeAmount = Number(formatEther(event.args.nativeOut))
       const tokenAmount = Number(formatEther(event.args.vyntraIn))
-      const price = tokenAmount > 0 ? botAmount / tokenAmount : 0
+      const price = tokenAmount > 0 ? nativeAmount / tokenAmount : 0
       const added = await insertPlatformTrade({
         side: 'sell',
         trader: event.args.seller!,
-        botAmount,
+        nativeAmount,
         tokenAmount,
         price,
         mcap: price * TOTAL_SUPPLY,
@@ -301,6 +304,85 @@ async function syncVyntraMarketTrades(
   return inserted
 }
 
+async function syncReserveEvents(chainSafeTo: bigint, tsCache: Map<string, number>): Promise<number> {
+  if (!VYNTRA_RESERVE_VAULT_ADDRESS) return 0
+
+  const last = await getMeta('last_reserve_block')
+  const from = last ? BigInt(last) + 1n : VYNTRA_RESERVE_START_BLOCK
+  if (from > chainSafeTo) return 0
+
+  const eventNames = [
+    'BucketReallocated',
+    'CampaignCreated',
+    'CampaignClaimed',
+    'CampaignExpired',
+    'ReserveReleaseRecorded',
+  ] as const
+  const chunkSize = BigInt(Math.max(1, Math.floor(LOG_CHUNK || 2_000)))
+  let cursor = from
+  let chunks = 0
+  let inserted = 0
+
+  while (cursor <= chainSafeTo && chunks < VYNTRA_RESERVE_CATCHUP_CHUNKS) {
+    const safeTo = chainSafeTo < cursor + chunkSize - 1n ? chainSafeTo : cursor + chunkSize - 1n
+    const logsByEvent = await Promise.all(
+      eventNames.map((eventName) =>
+        client.getContractEvents({
+          address: VYNTRA_RESERVE_VAULT_ADDRESS,
+          abi: reserveVaultAbi,
+          eventName,
+          fromBlock: cursor,
+          toBlock: safeTo,
+        }),
+      ),
+    )
+
+    for (const logs of logsByEvent) {
+      for (const log of logs) {
+        if (log.blockNumber == null || !log.transactionHash) continue
+        const args = log.args as unknown as Record<string, unknown>
+        const campaignId = args.campaignId == null ? null : String(args.campaignId)
+        const bucketValue = args.bucket ?? args.toBucket
+        const bucket = bucketValue == null ? null : Number(bucketValue)
+        const amountValue = args.amount ?? args.unclaimedReturned
+        const amount = amountValue == null ? null : String(amountValue)
+        const recipient = typeof args.recipient === 'string' ? args.recipient : null
+        const payload = JSON.stringify(args, (_key, value) =>
+          typeof value === 'bigint' ? value.toString() : value,
+        )
+        const result = await execute(
+          `INSERT OR IGNORE INTO reserve_events (
+            event_name, campaign_id, bucket, amount, recipient, block_number,
+            tx_hash, log_index, timestamp, payload_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            log.eventName,
+            campaignId,
+            bucket,
+            amount,
+            recipient,
+            Number(log.blockNumber),
+            log.transactionHash,
+            log.logIndex ?? 0,
+            await blockTs(log.blockNumber, tsCache),
+            payload,
+          ],
+        )
+        if (result.rowsAffected > 0) inserted++
+      }
+    }
+
+    await setMeta('last_reserve_block', safeTo.toString())
+    cursor = safeTo + 1n
+    chunks++
+  }
+
+  if (chunks > 0) {
+    console.log(`[indexer] reserve events indexed ${from}→${cursor - 1n} (+${inserted} events)`)
+  }
+  return inserted
+}
+
 export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: number; trades: number }> {
   const factory = requireFactory()
   const latest = await client.getBlockNumber()
@@ -320,6 +402,14 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
     } catch (error) {
       // The optional platform index must not stall the launch-curve indexer.
       console.error('[indexer] VYNTRA market sync error', error)
+    }
+  }
+  if (VYNTRA_RESERVE_VAULT_ADDRESS) {
+    try {
+      await syncReserveEvents(chainSafeTo, tsCache)
+    } catch (error) {
+      // Reserve indexing is optional and must not stall trading data.
+      console.error('[indexer] reserve event sync error', error)
     }
   }
 
@@ -426,26 +516,26 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
       client.getContractEvents({
         address: curve,
         abi: curveAbi,
-        eventName: 'MigratedToBdex',
+        eventName: 'MigratedToUniswap',
         fromBlock: from,
         toBlock: safeTo,
       }),
     ])
 
     for (const e of buys) {
-      if (!e.blockNumber || !e.transactionHash || e.args.botIn == null || e.args.tokensOut == null) continue
+      if (!e.blockNumber || !e.transactionHash || e.args.nativeIn == null || e.args.tokensOut == null) continue
       const ts = await blockTs(e.blockNumber, tsCache)
       const fee = Number(formatEther(e.args.fee ?? 0n))
-      const bot = Number(formatEther(e.args.botIn))
+      const native = Number(formatEther(e.args.nativeIn))
       const tok = Number(formatEther(e.args.tokensOut))
-      const net = Math.max(bot - fee, 0)
+      const net = Math.max(native - fee, 0)
       const price = tok > 0 ? net / tok : 0
       await insertTrade({
         launchId: L.id,
         curve,
         side: 'buy',
         trader: e.args.buyer!,
-        botAmount: bot,
+        nativeAmount: native,
         tokenAmount: tok,
         fee,
         price,
@@ -459,18 +549,18 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
     }
 
     for (const e of sells) {
-      if (!e.blockNumber || !e.transactionHash || e.args.botOut == null || e.args.tokensIn == null) continue
+      if (!e.blockNumber || !e.transactionHash || e.args.nativeOut == null || e.args.tokensIn == null) continue
       const ts = await blockTs(e.blockNumber, tsCache)
       const fee = Number(formatEther(e.args.fee ?? 0n))
-      const bot = Number(formatEther(e.args.botOut))
+      const native = Number(formatEther(e.args.nativeOut))
       const tok = Number(formatEther(e.args.tokensIn))
-      const price = tok > 0 ? bot / tok : 0
+      const price = tok > 0 ? native / tok : 0
       await insertTrade({
         launchId: L.id,
         curve,
         side: 'sell',
         trader: e.args.seller!,
-        botAmount: bot,
+        nativeAmount: native,
         tokenAmount: tok,
         fee,
         price,

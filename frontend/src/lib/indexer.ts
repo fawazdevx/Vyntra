@@ -29,14 +29,14 @@ type IndexerLaunch = {
   description: string
   createdAt: number
   progressBps: number
-  raisedBot: number
+  raisedNative: number
   graduated: boolean
   migrated: boolean
   externalPair: string
   buyTaxBps: number
   sellTaxBps: number
   tradeCount?: number
-  volumeBot?: number
+  volumeNative?: number
 }
 
 function toLaunchView(l: IndexerLaunch): LaunchView {
@@ -52,7 +52,7 @@ function toLaunchView(l: IndexerLaunch): LaunchView {
     description: l.description || '',
     createdAt: l.createdAt,
     progressBps: l.progressBps,
-    raisedBot: l.raisedBot,
+    raisedNative: l.raisedNative,
     graduated: l.graduated,
     migrated: l.migrated,
     externalPair: (l.externalPair || '0x0000000000000000000000000000000000000000') as Address,
@@ -84,7 +84,7 @@ export async function fetchTradesFromIndexer(launchId: number): Promise<TradePoi
       time: number
       price: number
       mcap: number
-      amountBot: number
+      amountNative: number
       amountToken: number
       side: 'buy' | 'sell'
       trader: string
@@ -96,7 +96,7 @@ export async function fetchTradesFromIndexer(launchId: number): Promise<TradePoi
     time: t.time,
     price: t.price,
     mcap: t.mcap,
-    amountBot: t.amountBot,
+    amountNative: t.amountNative,
     amountToken: t.amountToken,
     side: t.side,
     trader: t.trader as Address,
@@ -129,25 +129,43 @@ export async function fetchStatsFromIndexer(): Promise<{
   launches: number
   onCurve: number
   graduated: number
-  raisedBot: number
-  volumeBot: number
+  raisedNative: number
+  volumeNative: number
   trades: number
 } | null> {
   return getJson('/v1/stats')
 }
 
-export type BotUsdPrice = {
+export type HypeUsdPrice = {
   priceUsd: number
   source: 'geckoterminal'
-  referenceToken: 'WBOT'
-  referenceChainId: 677
+  referenceToken: 'HYPE'
+  referenceNetwork: 'Hyperliquid'
   updatedAt: number
 }
 
-export async function fetchBotUsdPriceFromIndexer(): Promise<BotUsdPrice | null> {
-  const data = await getJson<BotUsdPrice>('/v1/bot-usd')
+export async function fetchHypeUsdPriceFromIndexer(): Promise<HypeUsdPrice | null> {
+  const data = await getJson<HypeUsdPrice>('/v1/hype-usd')
   if (!data || !Number.isFinite(data.priceUsd) || data.priceUsd <= 0) return null
   return data
+}
+
+export type ReserveActivity = {
+  eventName: string
+  campaignId: string | null
+  bucket: number | null
+  amount: string | null
+  recipient: string | null
+  blockNumber: number
+  txHash: string
+  logIndex: number
+  timestamp: number
+  payload: Record<string, unknown>
+}
+
+export async function fetchReserveActivityFromIndexer(): Promise<ReserveActivity[] | null> {
+  const data = await getJson<{ events: ReserveActivity[] }>('/v1/reserve?limit=100')
+  return data?.events ?? null
 }
 
 export type HoldersPayload = {
@@ -159,8 +177,8 @@ export type HoldersPayload = {
     balance: number
     bought: number
     sold: number
-    spentBot: number
-    receivedBot: number
+    spentNative: number
+    receivedNative: number
     tradeCount: number
     firstTradeAt: number
     lastTradeAt: number
@@ -195,8 +213,8 @@ export type SnipersPayload = {
     boughtToken: number
     soldToken: number
     heldToken: number
-    spentBot: number
-    receivedBot: number
+    spentNative: number
+    receivedNative: number
     dumpBps: number
     stillHolding: boolean
     pctOfCirculating: number
@@ -205,7 +223,7 @@ export type SnipersPayload = {
     sniperCount: number
     stillHolding: number
     fullyDumped: number
-    totalSpentBot: number
+    totalSpentNative: number
     totalHeldToken: number
     heldPctOfCirculating: number
     avgDumpBps: number
@@ -246,27 +264,27 @@ export type PortfolioPayload = {
     boughtToken: number
     soldToken: number
     heldToken: number
-    spentBot: number
-    receivedBot: number
+    spentNative: number
+    receivedNative: number
     tradeCount: number
     firstTradeAt: number
     lastTradeAt: number
-    avgCostBot: number
+    avgCostNative: number
     lastPrice: number
-    realizedPnlBot: number
-    unrealizedPnlBot: number
-    totalPnlBot: number
+    realizedPnlNative: number
+    unrealizedPnlNative: number
+    totalPnlNative: number
   }>
   summary: {
     positionCount: number
     openCount: number
     tradeCount: number
-    spentBot: number
-    receivedBot: number
-    heldValueBot: number
-    realizedPnlBot: number
-    unrealizedPnlBot: number
-    totalPnlBot: number
+    spentNative: number
+    receivedNative: number
+    heldValueNative: number
+    realizedPnlNative: number
+    unrealizedPnlNative: number
+    totalPnlNative: number
   }
 }
 
@@ -278,7 +296,7 @@ export type WalletTradesPayload = {
     symbol: string
     name: string
     side: 'buy' | 'sell'
-    botAmount: number
+    nativeAmount: number
     tokenAmount: number
     price: number
     mcap: number

@@ -8,7 +8,7 @@ export type TradePoint = {
   time: number
   price: number
   mcap: number
-  amountBot: number
+  amountNative: number
   amountToken: number
   side: 'buy' | 'sell'
   trader: Address
@@ -17,15 +17,15 @@ export type TradePoint = {
 
 const TOTAL_SUPPLY = 1_000_000_000
 
-function priceFromBuy(botIn: bigint, tokensOut: bigint, fee: bigint) {
+function priceFromBuy(nativeIn: bigint, tokensOut: bigint, fee: bigint) {
   if (tokensOut === 0n) return 0
-  const net = botIn > fee ? botIn - fee : botIn
+  const net = nativeIn > fee ? nativeIn - fee : nativeIn
   return Number(formatEther(net)) / Number(formatEther(tokensOut))
 }
 
-function priceFromSell(botOut: bigint, tokensIn: bigint) {
+function priceFromSell(nativeOut: bigint, tokensIn: bigint) {
   if (tokensIn === 0n) return 0
-  return Number(formatEther(botOut)) / Number(formatEther(tokensIn))
+  return Number(formatEther(nativeOut)) / Number(formatEther(tokensIn))
 }
 
 async function fetchTrades(
@@ -69,13 +69,13 @@ async function fetchTrades(
 
   for (const e of buys) {
     const ts = e.blockNumber != null ? timestamps.get(e.blockNumber) : undefined
-    if (!ts || !e.transactionHash || e.args.botIn == null || e.args.tokensOut == null) continue
-    const price = priceFromBuy(e.args.botIn, e.args.tokensOut, e.args.fee ?? 0n)
+    if (!ts || !e.transactionHash || e.args.nativeIn == null || e.args.tokensOut == null) continue
+    const price = priceFromBuy(e.args.nativeIn, e.args.tokensOut, e.args.fee ?? 0n)
     trades.push({
       time: ts,
       price,
       mcap: price * TOTAL_SUPPLY,
-      amountBot: Number(formatEther(e.args.botIn)),
+      amountNative: Number(formatEther(e.args.nativeIn)),
       amountToken: Number(formatEther(e.args.tokensOut)),
       side: 'buy',
       trader: e.args.buyer!,
@@ -85,13 +85,13 @@ async function fetchTrades(
 
   for (const e of sells) {
     const ts = e.blockNumber != null ? timestamps.get(e.blockNumber) : undefined
-    if (!ts || !e.transactionHash || e.args.botOut == null || e.args.tokensIn == null) continue
-    const price = priceFromSell(e.args.botOut, e.args.tokensIn)
+    if (!ts || !e.transactionHash || e.args.nativeOut == null || e.args.tokensIn == null) continue
+    const price = priceFromSell(e.args.nativeOut, e.args.tokensIn)
     trades.push({
       time: ts,
       price,
       mcap: price * TOTAL_SUPPLY,
-      amountBot: Number(formatEther(e.args.botOut)),
+      amountNative: Number(formatEther(e.args.nativeOut)),
       amountToken: Number(formatEther(e.args.tokensIn)),
       side: 'sell',
       trader: e.args.seller!,

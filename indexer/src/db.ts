@@ -25,11 +25,11 @@ CREATE TABLE IF NOT EXISTS launches (
   migrated INTEGER NOT NULL DEFAULT 0,
   external_pair TEXT NOT NULL DEFAULT '',
   progress_bps INTEGER NOT NULL DEFAULT 0,
-  raised_bot REAL NOT NULL DEFAULT 0,
+  raised_native REAL NOT NULL DEFAULT 0,
   buy_tax_bps INTEGER NOT NULL DEFAULT 0,
   sell_tax_bps INTEGER NOT NULL DEFAULT 0,
   trade_count INTEGER NOT NULL DEFAULT 0,
-  volume_bot REAL NOT NULL DEFAULT 0,
+  volume_native REAL NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL DEFAULT 0
 );
 
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS trades (
   curve TEXT NOT NULL,
   side TEXT NOT NULL CHECK (side IN ('buy','sell')),
   trader TEXT NOT NULL,
-  bot_amount REAL NOT NULL,
+  native_amount REAL NOT NULL,
   token_amount REAL NOT NULL,
   fee REAL NOT NULL DEFAULT 0,
   price REAL NOT NULL,
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS platform_trades (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   side TEXT NOT NULL CHECK (side IN ('buy','sell')),
   trader TEXT NOT NULL,
-  bot_amount REAL NOT NULL,
+  native_amount REAL NOT NULL,
   token_amount REAL NOT NULL,
   fee REAL NOT NULL DEFAULT 0,
   price REAL NOT NULL,
@@ -84,6 +84,23 @@ CREATE TABLE IF NOT EXISTS replies (
   tx_hash TEXT NOT NULL DEFAULT '',
   PRIMARY KEY (launch_id, reply_index)
 );
+
+CREATE TABLE IF NOT EXISTS reserve_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_name TEXT NOT NULL,
+  campaign_id TEXT,
+  bucket INTEGER,
+  amount TEXT,
+  recipient TEXT,
+  block_number INTEGER NOT NULL,
+  tx_hash TEXT NOT NULL,
+  log_index INTEGER NOT NULL,
+  timestamp INTEGER NOT NULL,
+  payload_json TEXT NOT NULL,
+  UNIQUE (tx_hash, log_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reserve_events_time ON reserve_events(block_number DESC, log_index DESC);
 `
 
 let _client: Client | null = null
@@ -182,11 +199,11 @@ export type LaunchRow = {
   migrated: number
   external_pair: string
   progress_bps: number
-  raised_bot: number
+  raised_native: number
   buy_tax_bps: number
   sell_tax_bps: number
   trade_count: number
-  volume_bot: number
+  volume_native: number
   updated_at: number
 }
 
@@ -196,7 +213,7 @@ export type TradeRow = {
   curve: string
   side: 'buy' | 'sell'
   trader: string
-  bot_amount: number
+  native_amount: number
   token_amount: number
   fee: number
   price: number

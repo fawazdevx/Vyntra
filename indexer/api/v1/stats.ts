@@ -23,9 +23,9 @@ export default async function handler(req?: Request) {
         COUNT(*) AS launches,
         SUM(CASE WHEN graduated = 0 AND migrated = 0 THEN 1 ELSE 0 END) AS on_curve,
         SUM(CASE WHEN graduated = 1 OR migrated = 1 THEN 1 ELSE 0 END) AS graduated,
-        COALESCE(SUM(raised_bot), 0) AS raised_bot,
-        COALESCE(SUM(volume_bot), 0) +
-          COALESCE((SELECT SUM(bot_amount) FROM platform_trades), 0) AS volume_bot,
+        COALESCE(SUM(raised_native), 0) AS raised_native,
+        COALESCE(SUM(volume_native), 0) +
+          COALESCE((SELECT SUM(native_amount) FROM platform_trades), 0) AS volume_native,
         COALESCE(SUM(trade_count), 0) +
           COALESCE((SELECT COUNT(*) FROM platform_trades), 0) AS trades
       FROM launches
@@ -40,8 +40,8 @@ export default async function handler(req?: Request) {
       launches: Number(row.launches || 0),
       onCurve: Number(row.on_curve || 0),
       graduated: Number(row.graduated || 0),
-      raisedBot: Number(row.raised_bot || 0),
-      volumeBot: Number(row.volume_bot || 0),
+      raisedNative: Number(row.raised_native || 0),
+      volumeNative: Number(row.volume_native || 0),
       trades: Number(row.trades || 0),
       lastBlock: metaMap.last_block ?? null,
       lastSyncAt: metaMap.last_sync_at ?? null,

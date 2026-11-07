@@ -25,8 +25,8 @@ export function holdersFromTrades(
     address: string
     bought: number
     sold: number
-    spentBot: number
-    receivedBot: number
+    spentNative: number
+    receivedNative: number
     tradeCount: number
     firstTradeAt: number
     lastTradeAt: number
@@ -41,8 +41,8 @@ export function holdersFromTrades(
         address: t.trader,
         bought: 0,
         sold: 0,
-        spentBot: 0,
-        receivedBot: 0,
+        spentNative: 0,
+        receivedNative: 0,
         tradeCount: 0,
         firstTradeAt: t.time,
         lastTradeAt: t.time,
@@ -54,10 +54,10 @@ export function holdersFromTrades(
     acc.firstTradeAt = Math.min(acc.firstTradeAt, t.time)
     if (t.side === 'buy') {
       acc.bought += t.amountToken
-      acc.spentBot += t.amountBot
+      acc.spentNative += t.amountNative
     } else {
       acc.sold += t.amountToken
-      acc.receivedBot += t.amountBot
+      acc.receivedNative += t.amountNative
     }
   }
 
@@ -87,8 +87,8 @@ export function holdersFromTrades(
       balance: n.balance,
       bought: n.bought,
       sold: n.sold,
-      spentBot: n.spentBot,
-      receivedBot: n.receivedBot,
+      spentNative: n.spentNative,
+      receivedNative: n.receivedNative,
       tradeCount: n.tradeCount,
       firstTradeAt: n.firstTradeAt,
       lastTradeAt: n.lastTradeAt,
@@ -158,11 +158,11 @@ export function snipersFromTrades(
     }
     if (t.side === 'buy') {
       a.bought += t.amountToken
-      a.spent += t.amountBot
+      a.spent += t.amountNative
       a.firstBuyAt = Math.min(a.firstBuyAt, t.time)
     } else {
       a.sold += t.amountToken
-      a.received += t.amountBot
+      a.received += t.amountNative
     }
   }
 
@@ -182,15 +182,15 @@ export function snipersFromTrades(
       boughtToken,
       soldToken,
       heldToken,
-      spentBot: a?.spent || 0,
-      receivedBot: a?.received || 0,
+      spentNative: a?.spent || 0,
+      receivedNative: a?.received || 0,
       dumpBps,
       stillHolding: heldToken > 1e-12,
       pctOfCirculating: circulating > 0 ? (heldToken / circulating) * 100 : h?.pct || 0,
     }
   })
 
-  const totalSpentBot = snipers.reduce((s, x) => s + x.spentBot, 0)
+  const totalSpentNative = snipers.reduce((s, x) => s + x.spentNative, 0)
   const totalHeldToken = snipers.reduce((s, x) => s + x.heldToken, 0)
 
   return {
@@ -203,7 +203,7 @@ export function snipersFromTrades(
       sniperCount: snipers.length,
       stillHolding: snipers.filter((s) => s.stillHolding).length,
       fullyDumped: snipers.filter((s) => !s.stillHolding && s.boughtToken > 0).length,
-      totalSpentBot,
+      totalSpentNative,
       totalHeldToken,
       heldPctOfCirculating: circulating > 0 ? (totalHeldToken / circulating) * 100 : 0,
       avgDumpBps:

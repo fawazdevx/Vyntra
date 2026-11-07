@@ -1,26 +1,28 @@
-const WBOT_ADDRESS = '0xd5452816194a3784dba983426cce7c122f4abd30'
+// Hyperliquid's HYPE token on HyperEVM is the reference price for Elysium's
+// native HYPE. Elysium testnet HYPE itself is a faucet token with no market price.
+const HYPE_REFERENCE_ADDRESS = '0x0d01dc56dcaaca66ad901c959b4011ec'
 const CACHE_TTL_MS = 60_000
 const STALE_TTL_MS = 10 * 60_000
 
-export type BotUsdPrice = {
+export type HypeUsdPrice = {
   priceUsd: number
   source: 'geckoterminal'
-  referenceToken: 'WBOT'
-  referenceChainId: 677
+  referenceToken: 'HYPE'
+  referenceNetwork: 'Hyperliquid'
   updatedAt: number
 }
 
-let cached: BotUsdPrice | null = null
-let inFlight: Promise<BotUsdPrice> | null = null
+let cached: HypeUsdPrice | null = null
+let inFlight: Promise<HypeUsdPrice> | null = null
 
-/** Fetch the BOT Chain mainnet WBOT/USD reference price, cached per process. */
-export async function getBotUsdPrice(): Promise<BotUsdPrice> {
+/** Fetch the Hyperliquid mainnet HYPE/USD reference price, cached per process. */
+export async function getHypeUsdPrice(): Promise<HypeUsdPrice> {
   const now = Date.now()
   if (cached && now - cached.updatedAt < CACHE_TTL_MS) return cached
   if (inFlight) return inFlight
 
   inFlight = (async () => {
-    const endpoint = `https://api.geckoterminal.com/api/v2/simple/networks/bot-chain/token_price/${WBOT_ADDRESS}`
+    const endpoint = `https://api.geckoterminal.com/api/v2/simple/networks/hyperliquid/token_price/${HYPE_REFERENCE_ADDRESS}`
     const response = await fetch(endpoint, {
       headers: { Accept: 'application/json;version=20230203' },
       signal: AbortSignal.timeout(8_000),
@@ -30,17 +32,17 @@ export async function getBotUsdPrice(): Promise<BotUsdPrice> {
     const body = (await response.json()) as {
       data?: { attributes?: { token_prices?: Record<string, string> } }
     }
-    const raw = body.data?.attributes?.token_prices?.[WBOT_ADDRESS]
+    const raw = body.data?.attributes?.token_prices?.[HYPE_REFERENCE_ADDRESS]
     const priceUsd = Number(raw)
     if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
-      throw new Error('GeckoTerminal returned no valid WBOT price')
+      throw new Error('GeckoTerminal returned no valid HYPE price')
     }
 
     cached = {
       priceUsd,
       source: 'geckoterminal',
-      referenceToken: 'WBOT',
-      referenceChainId: 677,
+      referenceToken: 'HYPE',
+      referenceNetwork: 'Hyperliquid',
       updatedAt: Date.now(),
     }
     return cached

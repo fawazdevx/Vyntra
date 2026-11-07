@@ -13,9 +13,9 @@ import {
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { ThemeToggle } from '../components/ThemeToggle'
-import { BotUsd } from '../components/BotUsd'
+import { HypeUsd } from '../components/HypeUsd'
 import { VYNTRA_LOGO } from '../lib/config'
-import { activeChain, isMainnet } from '../lib/chains'
+import { activeChain } from '../lib/chains'
 import { fetchStatsFromIndexer, isIndexerConfigured } from '../lib/indexer'
 
 function formatVolume(value: number) {
@@ -27,18 +27,18 @@ function formatVolume(value: number) {
 const FEATURES = [
   {
     icon: Flame,
-    title: 'Fair bonding curves',
-    body: 'Fixed 1B meme supply, public price discovery in BOT, and anti-snipe on the first blocks.',
+    title: 'Direct Uniswap v4 launches',
+    body: 'Each fixed 1B supply launches atomically into a no-hook HYPE pool with a bounded opening price.',
   },
   {
     icon: Lock,
-    title: 'Trading stays open',
-    body: 'Graduation is a status change. Liquidity stays locked in the venue — no rug-pull LP withdraw.',
+    title: 'One pool, permanently locked',
+    body: 'The full-range position has no withdrawal path. Graduation marks progress; trading stays in the same pool.',
   },
   {
     icon: Coins,
     title: 'Creators earn',
-    body: 'Half of every 1.25% trade fee is claimable by the creator. Optional tax splits into four buckets.',
+    body: 'The 1% pool fee is collected from the locked position; creators can claim half of HYPE fees.',
   },
   {
     icon: Zap,
@@ -48,16 +48,16 @@ const FEATURES = [
 ]
 
 const STEPS = [
-  { n: '01', title: 'Bridge in', body: 'Bring USDT to BOT Chain, swap to $BOT for gas.', to: '/bridge' },
+  { n: '01', title: 'Get test HYPE', body: 'Request test HYPE from the Elysium faucet for gas and trading.', to: '/bridge' },
   { n: '02', title: 'Trade $VYNTRA', body: 'Buy the platform token on the seeded market.', to: '/vyntra' },
-  { n: '03', title: 'Launch or ape', body: 'Spawn a meme with image + story, or trade live curves.', to: '/markets' },
+  { n: '03', title: 'Launch or trade', body: 'Spawn a meme with image + story, or trade live HYPE pools.', to: '/markets' },
 ]
 
 const TICKER_ITEMS = [
   'Permissionless launches',
   'Creator-first trading',
   '$VYNTRA buybacks and burns',
-  'Built on BOT Chain',
+  'Elysium Testnet rollout in progress',
 ]
 
 function useLandingReveals() {
@@ -115,6 +115,12 @@ export function Landing() {
         </Link>
         <div className="flex items-center gap-2 sm:gap-3">
           <ThemeToggle />
+          <Link to="/docs" className="btn-ghost hidden px-3 py-2 text-sm sm:inline-flex">
+            Docs
+          </Link>
+          <Link to="/about" className="btn-ghost hidden px-3 py-2 text-sm sm:inline-flex">
+            About
+          </Link>
           <Link to="/markets" className="btn-ghost hidden px-3 py-2 text-sm sm:inline-flex">
             Markets
           </Link>
@@ -131,7 +137,7 @@ export function Landing() {
             <div className="landing-hero-copy">
               <div className="inline-flex items-center gap-2 rounded-full border border-[var(--vyntra-border)] bg-[var(--vyntra-card)] px-3 py-1.5">
                 <span className="chip-live !border-0 !bg-transparent !px-0 !py-0">
-                  Live on BOT Chain {isMainnet ? 'mainnet' : 'testnet'}
+                  Preparing for Elysium Testnet
                 </span>
               </div>
               <h1 className="page-title mt-6 text-5xl sm:text-6xl lg:text-7xl">
@@ -142,7 +148,7 @@ export function Landing() {
                 </span>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-[var(--vyntra-muted)] sm:text-xl">
-                Permissionless launches on BOT Chain. Fair curves, locked venues, creator fees, and a
+                Permissionless launches planned for Elysium Testnet. Direct HYPE pools, locked liquidity, creator fees, and a
                 platform token that absorbs protocol volume.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
@@ -156,11 +162,11 @@ export function Landing() {
                 </Link>
                 <Link to="/bridge" className="btn-ghost text-base">
                   <ArrowRightLeft className="h-5 w-5" />
-                  Bridge BOT
+                  Get test HYPE
                 </Link>
               </div>
               <div className="mt-10 grid max-w-lg grid-cols-3 gap-4">
-                <Stat label="Trade fee" value="1.25%" />
+                <Stat label="Pool fee" value="1%" />
                 <Stat label="To creators" value="50%" />
                 <Stat label="Supply" value="1B" />
               </div>
@@ -188,7 +194,7 @@ export function Landing() {
                   <Shield className="h-4 w-4 text-[var(--vyntra-primary)]" />
                   Locked liquidity
                 </div>
-                <p className="mt-1 text-xs text-[var(--vyntra-muted)]">Curve inventory never withdraws</p>
+                <p className="mt-1 text-xs text-[var(--vyntra-muted)]">Pool position cannot be withdrawn</p>
               </div>
             </div>
           </div>
@@ -202,24 +208,24 @@ export function Landing() {
         >
           <div className="card grid gap-5 p-5 sm:grid-cols-2 sm:items-center sm:p-6 lg:grid-cols-[1fr_auto_auto] lg:gap-10">
             <div className="sm:col-span-2 lg:col-span-1">
-              <p className="page-kicker">BOT Chain {isMainnet ? 'Mainnet' : 'Testnet'} activity</p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight">All-time Vyntra trading</h2>
+              <p className="page-kicker">Elysium Testnet preview</p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight">Vyntra trading activity</h2>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--vyntra-muted)]">
-                Combined BOT volume across launch-curve tokens and the $VYNTRA platform-token market.
+                Combined HYPE volume across launch pools and the $VYNTRA platform-token market will appear here after deployment.
               </p>
             </div>
 
             <div className="min-w-0 lg:border-l lg:border-[var(--vyntra-border)] lg:pl-8">
               <p className="label">Total volume</p>
               <p className="mt-1 font-display text-2xl font-bold tracking-tight">
-                {stats ? `${formatVolume(stats.volumeBot)} BOT` : statsQuery.isFetching ? (
+                {stats ? `${formatVolume(stats.volumeNative)} HYPE` : statsQuery.isFetching ? (
                   <span
                     aria-hidden="true"
                     className="inline-block h-8 w-36 animate-pulse rounded bg-[var(--vyntra-elev)] motion-reduce:animate-none"
                   />
                 ) : '—'}
               </p>
-              {stats && <BotUsd value={stats.volumeBot} className="mt-1 block text-sm text-[var(--vyntra-muted)]" />}
+              {stats && <HypeUsd value={stats.volumeNative} className="mt-1 block text-sm text-[var(--vyntra-muted)]" />}
             </div>
 
             <div className="min-w-0 sm:border-l sm:border-[var(--vyntra-border)] sm:pl-5 lg:pl-8">
@@ -244,9 +250,7 @@ export function Landing() {
             </div>
 
             <p className="text-[11px] leading-relaxed text-[var(--vyntra-faint)] sm:col-span-2 lg:col-span-3">
-              {isMainnet
-                ? 'USD estimates use the current BOT Chain mainnet WBOT reference price.'
-                : 'USD estimates use the current mainnet WBOT reference price; testnet BOT has no guaranteed dollar value.'}
+              USD estimates use the current Hyperliquid mainnet HYPE spot price as a reference; testnet HYPE has no guaranteed dollar value.
             </p>
           </div>
         </section>
@@ -310,19 +314,18 @@ export function Landing() {
             <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-[rgba(124,58,237,0.18)] blur-3xl" />
             <div className="relative flex flex-col items-start justify-between gap-8 lg:flex-row lg:items-center">
               <div className="max-w-xl">
-                <h2 className="page-title text-3xl sm:text-4xl">Ready when you are</h2>
+                <h2 className="page-title text-3xl sm:text-4xl">The testnet rollout is next</h2>
                 <p className="mt-3 text-base text-[var(--vyntra-muted)] sm:text-lg">
-                  Browse live curves, buy $VYNTRA, or launch with image, story, and optional tax — all
-                  on BOT Chain.
+                  Vyntra is preparing its Elysium deployment. Read the model and tokenomics while the testnet markets are getting ready.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Link to="/markets" className="btn-primary">
-                  Enter markets
+                <Link to="/about" className="btn-primary">
+                  About Vyntra
                   <ArrowRight className="h-4 w-4" />
                 </Link>
-                <Link to="/vyntra" className="btn-ghost">
-                  Trade $VYNTRA
+                <Link to="/bridge" className="btn-ghost">
+                  Bridge test HYPE
                 </Link>
               </div>
             </div>
@@ -331,9 +334,17 @@ export function Landing() {
       </main>
 
       <footer className="border-t border-[var(--vyntra-border)] px-4 py-8 text-center text-xs text-[var(--vyntra-faint)] sm:px-6">
-        © {new Date().getFullYear()} Vyntra · Built on BOT Chain ·{' '}
+        © {new Date().getFullYear()} Vyntra · Elysium Testnet deployment in preparation ·{' '}
         <Link to="/markets" className="hover:text-[var(--vyntra-fg)]">
           Open app
+        </Link>
+        {' '}·{' '}
+        <Link to="/docs" className="hover:text-[var(--vyntra-fg)]">
+          Docs
+        </Link>
+        {' '}·{' '}
+        <Link to="/about" className="hover:text-[var(--vyntra-fg)]">
+          About Vyntra
         </Link>
       </footer>
     </div>

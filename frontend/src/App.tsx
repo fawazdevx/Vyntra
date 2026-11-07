@@ -8,6 +8,8 @@ import { Portfolio } from './pages/Portfolio'
 import { Platform } from './pages/Platform'
 import { Bridge } from './pages/Bridge'
 import { Landing } from './pages/Landing'
+import { About } from './pages/About'
+import { Docs, VyntraAgentsPage } from './pages/Docs'
 import { ErrorBoundary } from './components/ErrorBoundary'
 
 function withBoundary(node: React.ReactNode) {
@@ -19,6 +21,12 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route index element={withBoundary(<Landing />)} />
+        <Route path="docs" element={withBoundary(<Docs />)} />
+        <Route path="docs/:slug" element={withBoundary(<Docs />)} />
+        <Route path="apps/mcp" element={withBoundary(<VyntraAgentsPage />)} />
+        <Route element={<Layout allowUnconfigured />}>
+          <Route path="about" element={withBoundary(<About />)} />
+        </Route>
         <Route element={<Layout />}>
           <Route path="markets" element={withBoundary(<Feed />)} />
           <Route path="spawn" element={withBoundary(<Spawn />)} />

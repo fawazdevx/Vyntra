@@ -1,36 +1,34 @@
 import { defineChain } from 'viem'
 
-export const botTestnet = defineChain({
-  id: 968,
-  name: 'BOT Chain Testnet',
-  nativeCurrency: { name: 'BOT', symbol: 'BOT', decimals: 18 },
+// Kinetiq's Elysium is chain 99801. Do not use viem's built-in `elysiumTestnet`
+// export; that name refers to a different network (chain 1338).
+export const elysiumTestnet = defineChain({
+  id: 99801,
+  name: 'Elysium Testnet',
+  nativeCurrency: { name: 'HYPE', symbol: 'HYPE', decimals: 18 },
   rpcUrls: {
-    default: { http: [import.meta.env.VITE_BOT_TESTNET_RPC_URL || 'https://rpc.bohr.life'] },
+    default: {
+      http: [
+        import.meta.env.VITE_ELYSIUM_TESTNET_RPC_URL ||
+          'https://testnet-rpc.elysium.kinetiq.xyz',
+      ],
+    },
   },
   blockExplorers: {
-    default: { name: 'BOT Scan', url: 'https://scan.bohr.life' },
+    default: {
+      name: 'Elysium Explorer',
+      url: 'https://explorer-elysium-testnet.t.conduit.xyz',
+    },
   },
   testnet: true,
 })
 
-export const botMainnet = defineChain({
-  id: 677,
-  name: 'BOT Chain',
-  nativeCurrency: { name: 'BOT', symbol: 'BOT', decimals: 18 },
-  rpcUrls: {
-    default: { http: [import.meta.env.VITE_BOT_MAINNET_RPC_URL || 'https://rpc.botchain.ai'] },
-  },
-  blockExplorers: {
-    default: { name: 'BOT Scan', url: 'https://scan.botchain.ai' },
-  },
-})
+const configuredChainId = Number(import.meta.env.VITE_CHAIN_ID || elysiumTestnet.id)
 
-const configuredChainId = Number(import.meta.env.VITE_CHAIN_ID || botTestnet.id)
-
-if (configuredChainId !== botTestnet.id && configuredChainId !== botMainnet.id) {
-  throw new Error('VITE_CHAIN_ID must be 968 (testnet) or 677 (mainnet).')
+if (configuredChainId !== elysiumTestnet.id) {
+  throw new Error('VITE_CHAIN_ID must be 99801 (Kinetiq Elysium Testnet).')
 }
 
-/** The frontend build targets one chain so reads, writes, and explorer links stay aligned. */
-export const activeChain = configuredChainId === botMainnet.id ? botMainnet : botTestnet
-export const isMainnet = activeChain.id === botMainnet.id
+/** This build targets Kinetiq Elysium Testnet. */
+export const activeChain = elysiumTestnet
+export const isMainnet = false

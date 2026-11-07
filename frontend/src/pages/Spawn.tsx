@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   useAccount,
   useChainId,
+  usePublicClient,
   useReadContract,
   useSwitchChain,
   useWaitForTransactionReceipt,
@@ -16,37 +17,22 @@ import { spawnFactoryAbi } from '../lib/abis'
 import { activeChain } from '../lib/chains'
 import { explorerTx, FACTORY_ADDRESS } from '../lib/config'
 import { formatUserError } from '../lib/errors'
-import { BotUsd } from '../components/BotUsd'
-
-const TAX_PRESETS = [
-  { label: 'Off', buy: 0, sell: 0 },
-  { label: '1%', buy: 100, sell: 100 },
-  { label: '5%', buy: 500, sell: 500 },
-  { label: '10%', buy: 1000, sell: 1000 },
-] as const
-
-/** Default 40/20/20/20 when tax is enabled */
-const DEFAULT_SPLIT = { funds: 4000, buyback: 2000, dividends: 2000, liquidity: 2000 }
+import { HypeUsd } from '../components/HypeUsd'
 
 export function Spawn() {
   const navigate = useNavigate()
   const chainId = useChainId()
   const { switchChain, isPending: switching } = useSwitchChain()
   const { isConnected } = useAccount()
+  const publicClient = usePublicClient({ chainId: activeChain.id })
   const [name, setName] = useState('')
   const [symbol, setSymbol] = useState('')
   const [imageURI, setImageURI] = useState('')
   const [description, setDescription] = useState('')
-  const [seedBuy, setSeedBuy] = useState('0')
+  const [initialLiquidity, setInitialLiquidity] = useState('5')
   const [agentMode, setAgentMode] = useState(false)
-  const [taxEnabled, setTaxEnabled] = useState(false)
-  const [buyTaxBps, setBuyTaxBps] = useState(500)
-  const [sellTaxBps, setSellTaxBps] = useState(500)
-  const [fundsBps, setFundsBps] = useState(DEFAULT_SPLIT.funds)
-  const [buybackBps, setBuybackBps] = useState(DEFAULT_SPLIT.buyback)
-  const [dividendsBps, setDividendsBps] = useState(DEFAULT_SPLIT.dividends)
-  const [liquidityBps, setLiquidityBps] = useState(DEFAULT_SPLIT.liquidity)
   const [status, setStatus] = useState<string | null>(null)
+  const [findingAddress, setFindingAddress] = useState(false)
 
   const trimmedName = name.trim()
   const trimmedSymbol = symbol.trim()
@@ -69,25 +55,11 @@ export function Spawn() {
     query: { enabled: trimmedSymbol.length > 0 },
   })
 
-  const { writeContract, data: hash, isPending, error, reset } = useWriteContract()
+  const { writeContractAsync, data: hash, isPending, error, reset } = useWriteContract()
   const { isLoading: confirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ hash })
 
   const onWrongChain = isConnected && chainId !== activeChain.id
   const initials = (symbol || name || '??').slice(0, 2).toUpperCase()
-
-  const splitTotal = fundsBps + buybackBps + dividendsBps + liquidityBps
-
-  const taxArgs = useMemo(() => {
-    if (!taxEnabled) return [0n, 0n, 0n, 0n, 0n, 0n] as const
-    return [
-      BigInt(buyTaxBps),
-      BigInt(sellTaxBps),
-      BigInt(fundsBps),
-      BigInt(buybackBps),
-      BigInt(dividendsBps),
-      BigInt(liquidityBps),
-    ] as const
-  }, [taxEnabled, buyTaxBps, sellTaxBps, fundsBps, buybackBps, dividendsBps, liquidityBps])
 
   const validationError = useMemo(() => {
     if (!trimmedName || !trimmedSymbol) return 'Name and symbol are required.'
@@ -95,17 +67,14 @@ export function Spawn() {
     if (!trimmedDesc) return 'Description is required — tell the story of this coin.'
     if (nameTaken) return `Name "${trimmedName}" is already taken — pick a different name.`
     if (symbolTaken) return `Ticker $${trimmedSymbol.toUpperCase()} is already taken — change the symbol.`
-    if (taxEnabled) {
-      if ((buyTaxBps !== 0 && (buyTaxBps < 100 || buyTaxBps > 1000)) ||
-          (sellTaxBps !== 0 && (sellTaxBps < 100 || sellTaxBps > 1000))) {
-        return 'Buy/sell tax must be 0% or between 1% and 10%.'
-      }
-      if (buyTaxBps === 0 && sellTaxBps === 0) {
-        return 'Enable tax with at least one of buy or sell set between 1–10%, or turn tax off.'
-      }
-      if (splitTotal !== 10_000) {
-        return `Tax split must total 100% (currently ${(splitTotal / 100).toFixed(0)}%).`
-      }
+    let seedWei = 0n
+    try {
+      seedWei = parseEther(initialLiquidity)
+    } catch {
+      return 'Enter a valid HYPE amount with at most 18 decimal places.'
+    }
+    if (seedWei < parseEther('5') || seedWei > parseEther('100')) {
+      return 'Initial locked liquidity must be between 5 and 100 HYPE.'
     }
     return null
   }, [
@@ -115,10 +84,7 @@ export function Spawn() {
     trimmedDesc,
     nameTaken,
     symbolTaken,
-    taxEnabled,
-    buyTaxBps,
-    sellTaxBps,
-    splitTotal,
+    initialLiquidity,
   ])
 
   const canSubmit = !validationError
@@ -145,22 +111,6 @@ export function Spawn() {
     setStatus('Launch confirmed — open Markets if redirect missed the id.')
   }, [isSuccess, receipt, navigate])
 
-  function applyPreset(buy: number, sell: number) {
-    if (buy === 0 && sell === 0) {
-      setTaxEnabled(false)
-      setBuyTaxBps(0)
-      setSellTaxBps(0)
-      return
-    }
-    setTaxEnabled(true)
-    setBuyTaxBps(buy)
-    setSellTaxBps(sell)
-    setFundsBps(DEFAULT_SPLIT.funds)
-    setBuybackBps(DEFAULT_SPLIT.buyback)
-    setDividendsBps(DEFAULT_SPLIT.dividends)
-    setLiquidityBps(DEFAULT_SPLIT.liquidity)
-  }
-
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setStatus(null)
@@ -175,7 +125,7 @@ export function Spawn() {
       return
     }
     if (onWrongChain) {
-      setStatus('Switch to BOT Chain to continue.')
+      setStatus('Switch to Elysium Testnet to continue.')
       return
     }
 
@@ -183,21 +133,47 @@ export function Spawn() {
       ? `${trimmedDesc}\n\n[Agent Launch]`
       : trimmedDesc
 
-    writeContract({
-      address: FACTORY_ADDRESS,
-      abi: spawnFactoryAbi,
-      functionName: 'spawn',
-      args: [
-        trimmedName,
-        trimmedSymbol.toUpperCase(),
-        trimmedImage,
-        finalDescription,
-        zeroAddress,
-        ...taxArgs,
-      ],
-      value: seedBuy && Number(seedBuy) > 0 ? parseEther(seedBuy) : 0n,
-      chainId: activeChain.id,
-    })
+    if (!publicClient) {
+      setStatus('Unable to read Elysium Testnet. Check the network connection and try again.')
+      return
+    }
+
+    setFindingAddress(true)
+    try {
+      setStatus('Finding a token address ending in 7f7…')
+      const [tokenSalt, predictedToken] = await publicClient.readContract({
+        address: FACTORY_ADDRESS,
+        abi: spawnFactoryAbi,
+        functionName: 'findVanitySalt',
+        args: [trimmedName, trimmedSymbol.toUpperCase(), trimmedImage, finalDescription],
+      })
+      setStatus(`Vyntra address ${predictedToken} ends in 7f7. Confirm the launch in your wallet.`)
+      await writeContractAsync({
+        address: FACTORY_ADDRESS,
+        abi: spawnFactoryAbi,
+        functionName: 'spawn',
+        args: [
+          trimmedName,
+          trimmedSymbol.toUpperCase(),
+          trimmedImage,
+          finalDescription,
+          zeroAddress,
+          0n,
+          0n,
+          0n,
+          0n,
+          0n,
+          0n,
+          tokenSalt,
+        ],
+        value: parseEther(initialLiquidity),
+        chainId: activeChain.id,
+      })
+    } catch (launchError) {
+      setStatus(formatUserError(launchError))
+    } finally {
+      setFindingAddress(false)
+    }
   }
 
   return (
@@ -207,8 +183,11 @@ export function Spawn() {
           <p className="page-kicker mb-2">Create</p>
           <h1 className="page-title text-4xl sm:text-5xl lg:text-6xl">Launch a coin</h1>
           <p className="mt-3 max-w-md text-base text-[var(--vyntra-muted)] sm:text-lg">
-            Fixed 1B supply. Early buys are limited for a few blocks. Optional creator tax on top of
-            the 1.25% protocol fee.
+            Launch directly into a no-hook Uniswap v4 HYPE pool. All 1B tokens enter a full-range
+            position that cannot be removed; the 1% pool fee is shared with the creator.
+          </p>
+          <p className="mt-2 max-w-md text-sm text-[var(--vyntra-muted)]">
+            Every Vyntra token contract ends in <span className="font-mono font-semibold">7f7</span> for quick identification.
           </p>
         </div>
 
@@ -267,142 +246,25 @@ export function Spawn() {
             </p>
           </Field>
 
-          <Field label="Seed buy (BOT)">
+          <Field label="Initial locked liquidity (HYPE) *">
             <input
               className="input font-mono"
               type="number"
-              min="0"
-              step="0.01"
-              value={seedBuy}
-              onChange={(e) => setSeedBuy(e.target.value)}
+              min="5"
+              max="100"
+              step="0.001"
+              value={initialLiquidity}
+              onChange={(e) => setInitialLiquidity(e.target.value)}
+              required
             />
-            <BotUsd value={Number(seedBuy) || 0} className="text-xs text-[var(--vyntra-faint)]" />
+            <HypeUsd value={Number(initialLiquidity) || 0} className="text-xs text-[var(--vyntra-faint)]" />
             <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[var(--vyntra-faint)]">
               <Info className="mt-0.5 h-3 w-3 shrink-0" />
-              Optional first buy in the same tx. Only the creator can buy on the launch block.
+              This HYPE and the full token supply are deposited atomically. The 5 HYPE minimum
+              sets a liquidity floor; the seed and fixed supply determine the opening price.
+              Buys are capped at 2% of supply in total during the first three blocks.
             </p>
           </Field>
-
-          {/* Creator tax (Argus Phase 2) */}
-          <div className="space-y-4 rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-[var(--vyntra-fg)]">Creator tax</p>
-                <p className="mt-1 text-xs text-[var(--vyntra-muted)]">
-                  Optional 0% or 1–10% buy/sell tax after the 1.25% protocol fee. Split into funds,
-                  buyback, dividends, and LP.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !taxEnabled
-                  setTaxEnabled(next)
-                  if (next) {
-                    setBuyTaxBps(500)
-                    setSellTaxBps(500)
-                    setFundsBps(DEFAULT_SPLIT.funds)
-                    setBuybackBps(DEFAULT_SPLIT.buyback)
-                    setDividendsBps(DEFAULT_SPLIT.dividends)
-                    setLiquidityBps(DEFAULT_SPLIT.liquidity)
-                  } else {
-                    setBuyTaxBps(0)
-                    setSellTaxBps(0)
-                  }
-                }}
-                className={`h-5 w-9 shrink-0 rounded-full p-0.5 transition ${
-                  taxEnabled ? 'bg-[var(--vyntra-fg)]' : 'bg-[var(--vyntra-border-strong)]'
-                }`}
-                aria-pressed={taxEnabled}
-              >
-                <span
-                  className={`block h-4 w-4 rounded-full bg-white transition ${
-                    taxEnabled ? 'translate-x-4' : ''
-                  }`}
-                />
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {TAX_PRESETS.map((p) => (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() => applyPreset(p.buy, p.sell)}
-                  className={`chip cursor-pointer transition ${
-                    (!taxEnabled && p.buy === 0) ||
-                    (taxEnabled && buyTaxBps === p.buy && sellTaxBps === p.sell)
-                      ? 'border-[var(--vyntra-fg)] text-[var(--vyntra-fg)]'
-                      : ''
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-
-            {taxEnabled && (
-              <div className="space-y-4 border-t border-[var(--vyntra-border)] pt-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label={`Buy tax ${(buyTaxBps / 100).toFixed(0)}%`}>
-                    <input
-                      className="input font-mono"
-                      type="range"
-                      min={100}
-                      max={1000}
-                      step={100}
-                      value={buyTaxBps || 100}
-                      onChange={(e) => setBuyTaxBps(Number(e.target.value))}
-                    />
-                  </Field>
-                  <Field label={`Sell tax ${(sellTaxBps / 100).toFixed(0)}%`}>
-                    <input
-                      className="input font-mono"
-                      type="range"
-                      min={100}
-                      max={1000}
-                      step={100}
-                      value={sellTaxBps || 100}
-                      onChange={(e) => setSellTaxBps(Number(e.target.value))}
-                    />
-                  </Field>
-                </div>
-
-                <p className="label">Split (must total 100%)</p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <SplitField
-                    label="Funds"
-                    value={fundsBps}
-                    onChange={setFundsBps}
-                  />
-                  <SplitField
-                    label="Buyback"
-                    value={buybackBps}
-                    onChange={setBuybackBps}
-                  />
-                  <SplitField
-                    label="Dividends"
-                    value={dividendsBps}
-                    onChange={setDividendsBps}
-                  />
-                  <SplitField
-                    label="Liquidity"
-                    value={liquidityBps}
-                    onChange={setLiquidityBps}
-                  />
-                </div>
-                <p
-                  className={`text-xs font-mono ${
-                    splitTotal === 10_000
-                      ? 'text-[var(--vyntra-success)]'
-                      : 'text-[var(--vyntra-danger)]'
-                  }`}
-                >
-                  Total {(splitTotal / 100).toFixed(0)}%
-                </p>
-              </div>
-            )}
-          </div>
 
           <button
             type="button"
@@ -452,16 +314,16 @@ export function Spawn() {
               disabled={switching}
               onClick={() => switchChain({ chainId: activeChain.id })}
             >
-              {switching ? 'Switching…' : 'Switch to BOT Chain'}
+              {switching ? 'Switching…' : 'Switch to Elysium Testnet'}
             </button>
           ) : (
             <button
               type="submit"
               className="btn-primary w-full py-3.5"
-              disabled={isPending || confirming || !canSubmit}
+              disabled={findingAddress || isPending || confirming || !canSubmit}
             >
               <Rocket className="h-4 w-4" />
-              {isPending || confirming ? 'Confirm in wallet…' : 'Launch token'}
+              {findingAddress ? 'Finding address…' : isPending || confirming ? 'Confirm in wallet…' : 'Launch token'}
             </button>
           )}
 
@@ -514,13 +376,11 @@ export function Spawn() {
             </p>
             <div className="flex flex-wrap gap-2">
               <span className="chip">1B supply</span>
-              <span className="chip">1.25% fee</span>
-              <span className="chip">Creator earns</span>
-              {taxEnabled && (
-                <span className="chip">
-                  Tax {(buyTaxBps / 100).toFixed(0)}%/{(sellTaxBps / 100).toFixed(0)}%
-                </span>
-              )}
+              <span className="chip">Address ends 7f7</span>
+              <span className="chip">Uniswap v4 · no hook</span>
+              <span className="chip">1% LP fee</span>
+              <span className="chip">LP locked forever</span>
+              <span className="chip">Opening price bounded</span>
               <span className="chip-live">{activeChain.testnet ? 'Testnet' : 'Mainnet'}</span>
               {agentMode && <span className="chip-demo">Agent</span>}
             </div>
@@ -538,34 +398,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         {label}
       </span>
       {children}
-    </label>
-  )
-}
-
-function SplitField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string
-  value: number
-  onChange: (v: number) => void
-}) {
-  return (
-    <label className="block space-y-1.5">
-      <span className="flex justify-between text-xs font-medium text-[var(--vyntra-muted)]">
-        <span>{label}</span>
-        <span className="font-mono">{(value / 100).toFixed(0)}%</span>
-      </span>
-      <input
-        className="w-full accent-[var(--vyntra-fg)]"
-        type="range"
-        min={0}
-        max={10000}
-        step={500}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
     </label>
   )
 }

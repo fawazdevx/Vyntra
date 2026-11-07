@@ -11,11 +11,10 @@ function optionalAddress(raw?: string): Address | undefined {
 
 export const RPC_URL =
   process.env.INDEXER_RPC_URL ||
-  process.env.BOT_TESTNET_RPC_URL ||
-  process.env.VITE_BOT_TESTNET_RPC_URL ||
-  'https://rpc.bohr.life'
+  process.env.ELYSIUM_TESTNET_RPC_URL ||
+  'https://testnet-rpc.elysium.kinetiq.xyz'
 
-export const CHAIN_ID = Number(process.env.INDEXER_CHAIN_ID || process.env.BOT_TESTNET_CHAIN_ID || 968)
+export const CHAIN_ID = Number(process.env.INDEXER_CHAIN_ID || 99801)
 
 export const FACTORY_ADDRESS = optionalAddress(
   process.env.FACTORY_ADDRESS || process.env.VITE_FACTORY_ADDRESS,
@@ -35,6 +34,10 @@ export const VYNTRA_TOKEN_ADDRESS = optionalAddress(
   process.env.VYNTRA_TOKEN_ADDRESS ||
     process.env.VITE_VYNTRA_TOKEN ||
     process.env.VITE_SPAWN_TOKEN,
+)
+
+export const VYNTRA_RESERVE_VAULT_ADDRESS = optionalAddress(
+  process.env.VYNTRA_RESERVE_VAULT_ADDRESS || process.env.VITE_VYNTRA_RESERVE_VAULT,
 )
 
 const isVercel = Boolean(process.env.VERCEL)
@@ -65,6 +68,13 @@ export const START_BLOCK = BigInt(process.env.INDEXER_START_BLOCK || '0')
 export const VYNTRA_MARKET_START_BLOCK = BigInt(
   process.env.VYNTRA_MARKET_START_BLOCK || process.env.INDEXER_START_BLOCK || '0',
 )
+export const VYNTRA_RESERVE_START_BLOCK = BigInt(
+  process.env.VYNTRA_RESERVE_START_BLOCK || process.env.INDEXER_START_BLOCK || '0',
+)
+const reserveCatchupChunks = Number(process.env.VYNTRA_RESERVE_CATCHUP_CHUNKS)
+export const VYNTRA_RESERVE_CATCHUP_CHUNKS = Number.isInteger(reserveCatchupChunks) && reserveCatchupChunks > 0
+  ? reserveCatchupChunks
+  : isVercel ? 1 : 10
 export const SYNC_STALE_SEC = Number(process.env.INDEXER_SYNC_STALE_SEC || 20)
 export const CRON_SECRET = process.env.CRON_SECRET || ''
 

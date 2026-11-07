@@ -13,7 +13,7 @@ export type Candle = {
 /** Build OHLCV candles from indexed trades. intervalSec: 60 | 300 | 900 | 3600 | 86400 */
 export async function buildOhlcv(launchId: number, intervalSec: number, limit = 500): Promise<Candle[]> {
   const rows = await queryAll<{ timestamp: number; price: number; volume: number }>(
-    `SELECT timestamp, price, bot_amount AS volume
+    `SELECT timestamp, price, native_amount AS volume
      FROM trades WHERE launch_id = ? ORDER BY timestamp ASC, id ASC`,
     [launchId],
   )

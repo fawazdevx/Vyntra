@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Link, NavLink, Outlet } from 'react-router-dom'
-import { Sparkles, Rocket, LayoutDashboard, Briefcase, ArrowRightLeft, ExternalLink } from 'lucide-react'
+import { Sparkles, Rocket, LayoutDashboard, Briefcase, ArrowRightLeft, ExternalLink, BookOpen, Info } from 'lucide-react'
 import { isAppConfigured, VYNTRA_LOGO } from '../lib/config'
 import { activeChain } from '../lib/chains'
 import { ThemeToggle } from './ThemeToggle'
@@ -12,11 +12,13 @@ const nav = [
   { to: '/dashboard', label: 'Studio', icon: LayoutDashboard },
   { to: '/portfolio', label: 'Portfolio', icon: Briefcase },
   { to: '/bridge', label: 'Bridge', icon: ArrowRightLeft },
+  { to: '/about', label: 'About', icon: Info },
+  { to: '/docs', label: 'Docs', icon: BookOpen },
 ]
 
 const year = new Date().getFullYear()
 
-export function Layout() {
+export function Layout({ allowUnconfigured = false }: { allowUnconfigured?: boolean }) {
   const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
@@ -89,7 +91,7 @@ export function Layout() {
       </header>
 
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
-        {!isAppConfigured ? (
+        {!isAppConfigured && !allowUnconfigured ? (
           <div className="card mx-auto max-w-lg border-[rgba(245,158,11,0.35)] px-6 py-12 text-center">
             <p className="font-display text-3xl">Coming online</p>
             <p className="mt-3 text-base leading-relaxed text-[var(--vyntra-muted)]">
@@ -110,8 +112,7 @@ export function Layout() {
                 <span className="font-display text-xl tracking-tight">Vyntra</span>
               </Link>
               <p className="mt-4 max-w-xs text-sm leading-relaxed text-[var(--vyntra-muted)]">
-                Fair-launch coins on BOT Chain. Creators earn from trading. Platform fees buy and burn
-                $VYNTRA.
+                Creator token launches with a shared market, locked initial liquidity, and clear supply rules. Elysium Testnet deployment is in preparation.
               </p>
             </div>
 
@@ -150,6 +151,21 @@ export function Layout() {
                     $VYNTRA
                   </Link>
                 </li>
+                <li>
+                  <Link to="/about" className="transition hover:text-[var(--vyntra-fg)]">
+                    About Vyntra
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/docs" className="transition hover:text-[var(--vyntra-fg)]">
+                    Documentation
+                  </Link>
+                </li>
+                <li>
+                  <Link to="/apps/mcp" className="transition hover:text-[var(--vyntra-fg)]">
+                    MCP for agents
+                  </Link>
+                </li>
               </ul>
             </div>
 
@@ -160,7 +176,7 @@ export function Layout() {
               <ul className="mt-4 space-y-2.5 text-sm text-[var(--vyntra-muted)]">
                 <li>
                   <a
-                    href="https://scan.bohr.life"
+                    href="https://explorer-elysium-testnet.t.conduit.xyz"
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 transition hover:text-[var(--vyntra-fg)]"
@@ -171,12 +187,12 @@ export function Layout() {
                 </li>
                 <li>
                   <a
-                    href="https://botchain.ai"
+                    href="https://elysium.kinetiq.xyz"
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex items-center gap-1.5 transition hover:text-[var(--vyntra-fg)]"
                   >
-                    BOT Chain
+                    Elysium Testnet
                     <ExternalLink className="h-3.5 w-3.5 opacity-60" />
                   </a>
                 </li>
@@ -188,16 +204,16 @@ export function Layout() {
                 Fees
               </p>
               <ul className="mt-4 space-y-2.5 text-sm text-[var(--vyntra-muted)]">
-                <li>1.25% per trade</li>
-                <li>Half goes to creators</li>
-                <li>Optional creator tax (1–10%)</li>
+                <li>1% Uniswap v4 pool fee</li>
+                <li>Half of HYPE pool fees to creators</li>
+                <li>Full-range liquidity locked at launch</li>
                 <li>Protocol share buys &amp; burns $VYNTRA</li>
               </ul>
             </div>
           </div>
 
           <div className="mt-10 flex flex-col items-start justify-between gap-3 border-t border-[var(--vyntra-border)] pt-6 text-xs text-[var(--vyntra-faint)] sm:flex-row sm:items-center">
-            <p>© {year} Vyntra. Built on BOT Chain.</p>
+            <p>© {year} Vyntra. Elysium Testnet deployment in preparation.</p>
             <p>{activeChain.testnet ? 'Testnet' : 'Mainnet'}</p>
           </div>
         </div>

@@ -3,17 +3,17 @@ import { useReadContract } from 'wagmi'
 import { formatEther } from 'viem'
 import { Sparkles, ArrowUpRight } from 'lucide-react'
 import { vyntraMarketAbi } from '../lib/abis'
-import { formatBot, VYNTRA_LOGO, VYNTRA_MARKET, VYNTRA_TOKEN } from '../lib/config'
-import { BotUsd } from './BotUsd'
+import { formatNative, VYNTRA_LOGO, VYNTRA_MARKET, VYNTRA_TOKEN } from '../lib/config'
+import { HypeUsd } from './HypeUsd'
 
 /** Pinned first on Markets — platform token entry point. */
 export function PlatformTokenCard() {
   const ready = Boolean(VYNTRA_TOKEN && VYNTRA_MARKET)
 
-  const { data: reserveBot } = useReadContract({
+  const { data: reserveNative } = useReadContract({
     address: VYNTRA_MARKET,
     abi: vyntraMarketAbi,
-    functionName: 'reserveBot',
+    functionName: 'reserveNative',
     query: { enabled: ready, refetchInterval: 15_000, staleTime: 10_000 },
   })
 
@@ -25,8 +25,8 @@ export function PlatformTokenCard() {
   })
 
   const price =
-    reserveBot != null && reserveVyntra != null && reserveVyntra > 0n
-      ? Number(formatEther(reserveBot)) / Number(formatEther(reserveVyntra))
+    reserveNative != null && reserveVyntra != null && reserveVyntra > 0n
+      ? Number(formatEther(reserveNative)) / Number(formatEther(reserveVyntra))
       : 0
 
   const mcap = price > 0 ? price * 1_000_000_000 : 0
@@ -63,23 +63,23 @@ export function PlatformTokenCard() {
           <div>
             <div className="label">Market cap / FDV</div>
             <div className="mt-1 font-mono text-xl font-bold sm:text-2xl">
-              {ready && mcap > 0 ? `${formatBot(mcap)} BOT` : ready ? '—' : 'Configure'}
+              {ready && mcap > 0 ? `${formatNative(mcap)} HYPE` : ready ? '—' : 'Configure'}
             </div>
-            {ready && mcap > 0 && <BotUsd value={mcap} />}
+            {ready && mcap > 0 && <HypeUsd value={mcap} />}
           </div>
           <div>
             <div className="label">Spot</div>
             <div className="mt-1 font-mono text-xl font-bold sm:text-2xl">
-              {ready && price > 0 ? `${formatBot(price)} BOT` : '—'}
+              {ready && price > 0 ? `${formatNative(price)} HYPE` : '—'}
             </div>
-            {ready && price > 0 && <BotUsd value={price} />}
+            {ready && price > 0 && <HypeUsd value={price} />}
           </div>
           <div>
-            <div className="label">Pool BOT</div>
+            <div className="label">Pool HYPE</div>
             <div className="mt-1 font-mono text-xl font-bold sm:text-2xl">
-              {reserveBot != null ? formatBot(reserveBot) : '—'}
+              {reserveNative != null ? formatNative(reserveNative) : '—'}
             </div>
-            {reserveBot != null && <BotUsd value={Number(formatEther(reserveBot))} />}
+            {reserveNative != null && <HypeUsd value={Number(formatEther(reserveNative))} />}
           </div>
           <span className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--vyntra-primary)] px-4 py-2.5 text-sm font-semibold text-[#faf8ff] transition group-hover:brightness-110">
             Trade

@@ -11,10 +11,10 @@ import { RefreshCw, Zap } from 'lucide-react'
 import { vyntraKeeperAbi } from '../lib/abis'
 import { activeChain } from '../lib/chains'
 import { useLaunches } from '../hooks/useLaunches'
-import { explorerTx, isKeeperConfigured, KEEPER_ADDRESS, ZERO_ADDRESS } from '../lib/config'
+import { explorerTx, isKeeperConfigured, KEEPER_ADDRESS, VYNTRA_MARKET, ZERO_ADDRESS } from '../lib/config'
 import { formatUserError } from '../lib/errors'
 
-/** Permissionless sweep UI: protocol fees → buyback burn + meme tax automation. */
+/** Permissionless sweep UI: collect market fees and route the protocol share. */
 export function KeeperPanel() {
   const { isConnected } = useAccount()
   const chainId = useChainId()
@@ -26,14 +26,13 @@ export function KeeperPanel() {
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash })
   const onWrongChain = isConnected && chainId !== activeChain.id
 
-  const { curves, splitters } = useMemo(() => {
+  const curves = useMemo(() => {
     const curves: `0x${string}`[] = []
-    const splitters: `0x${string}`[] = []
     for (const l of launches) {
       if (l.curve && l.curve !== ZERO_ADDRESS) curves.push(l.curve)
-      if (l.splitter && l.splitter !== ZERO_ADDRESS && !l.migrated) splitters.push(l.splitter)
     }
-    return { curves, splitters }
+    if (VYNTRA_MARKET && VYNTRA_MARKET !== ZERO_ADDRESS) curves.push(VYNTRA_MARKET)
+    return curves
   }, [launches])
 
   function runSweep() {
@@ -48,10 +47,10 @@ export function KeeperPanel() {
       return
     }
     if (onWrongChain) {
-      setMsg('Switch to BOT Chain first.')
+      setMsg('Switch to Elysium Testnet first.')
       return
     }
-    if (curves.length === 0 && splitters.length === 0) {
+    if (curves.length === 0) {
       setMsg('No markets to sweep yet.')
       return
     }
@@ -59,7 +58,7 @@ export function KeeperPanel() {
       address: KEEPER_ADDRESS,
       abi: vyntraKeeperAbi,
       functionName: 'sweepAll',
-      args: [curves, splitters, 0n],
+      args: [curves, [], 0n],
       chainId: activeChain.id,
     })
   }
@@ -81,8 +80,8 @@ export function KeeperPanel() {
           <p className="page-kicker mb-1">Automation</p>
           <h2 className="font-display text-xl">Keeper</h2>
           <p className="mt-1 max-w-xl text-sm text-[var(--vyntra-muted)]">
-            Permissionless sweep: claim protocol fees → 80/20 distribute → buy &amp; burn $VYNTRA,
-            then meme tax buyback + LP inject. Migrated BDEX markets are skipped for tax actions.
+            Permissionless sweep: collect protocol shares from locked market positions, then route
+            the HYPE proceeds through the buyback and ops split. No custom market hooks are used.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -122,16 +121,16 @@ export function KeeperPanel() {
 
       <div className="grid gap-3 px-5 py-4 sm:grid-cols-3">
         <div>
-          <div className="label">Curves in batch</div>
+          <div className="label">Markets in batch</div>
           <div className="mt-1 font-mono text-lg">{curves.length}</div>
         </div>
         <div>
-          <div className="label">Splitters in batch</div>
-          <div className="mt-1 font-mono text-lg">{splitters.length}</div>
+          <div className="label">Pool fee</div>
+          <div className="mt-1 font-mono text-lg">1%</div>
         </div>
         <div>
-          <div className="label">Markets</div>
-          <div className="mt-1 font-mono text-lg">{launches.length}</div>
+          <div className="label">Protocol allocation</div>
+          <div className="mt-1 font-mono text-lg">80 / 20</div>
         </div>
       </div>
 

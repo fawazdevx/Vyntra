@@ -15,7 +15,7 @@ async function main() {
     `INSERT OR REPLACE INTO launches (
       id, token, curve, splitter, creator, name, symbol, image_uri, description,
       created_at, created_block, graduated, migrated, external_pair, progress_bps,
-      raised_bot, buy_tax_bps, sell_tax_bps, trade_count, volume_bot, updated_at
+      raised_native, buy_tax_bps, sell_tax_bps, trade_count, volume_native, updated_at
     ) VALUES (1, '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
       '0xcccccccccccccccccccccccccccccccccccccccc',

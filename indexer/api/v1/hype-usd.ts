@@ -1,4 +1,4 @@
-import { getBotUsdPrice } from '../../src/bot-price.js'
+import { getHypeUsdPrice } from '../../src/hype-price.js'
 import { jsonCors, optionsOk } from '../../src/edge-cors.js'
 
 export const config = { runtime: 'edge' }
@@ -7,7 +7,7 @@ export default async function handler(req?: Request) {
   if (req?.method === 'OPTIONS') return optionsOk()
 
   try {
-    const price = await getBotUsdPrice()
+    const price = await getHypeUsdPrice()
     return jsonCors(price, {
       headers: {
         'Cache-Control': 'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
@@ -15,7 +15,7 @@ export default async function handler(req?: Request) {
     })
   } catch (error) {
     return jsonCors(
-      { error: 'bot_price_unavailable', detail: error instanceof Error ? error.message : String(error) },
+      { error: 'hype_price_unavailable', detail: error instanceof Error ? error.message : String(error) },
       { status: 503, headers: { 'Cache-Control': 'no-store' } },
     )
   }

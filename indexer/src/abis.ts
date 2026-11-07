@@ -49,7 +49,7 @@ export const curveAbi = [
     inputs: [
       { name: 'buyer', type: 'address', indexed: true },
       { name: 'referrer', type: 'address', indexed: true },
-      { name: 'botIn', type: 'uint256', indexed: false },
+      { name: 'nativeIn', type: 'uint256', indexed: false },
       { name: 'tokensOut', type: 'uint256', indexed: false },
       { name: 'fee', type: 'uint256', indexed: false },
     ],
@@ -60,7 +60,7 @@ export const curveAbi = [
     inputs: [
       { name: 'seller', type: 'address', indexed: true },
       { name: 'tokensIn', type: 'uint256', indexed: false },
-      { name: 'botOut', type: 'uint256', indexed: false },
+      { name: 'nativeOut', type: 'uint256', indexed: false },
       { name: 'fee', type: 'uint256', indexed: false },
     ],
   },
@@ -69,17 +69,17 @@ export const curveAbi = [
     name: 'Graduated',
     inputs: [
       { name: 'token', type: 'address', indexed: true },
-      { name: 'botLiquidity', type: 'uint256', indexed: false },
+      { name: 'nativeLiquidity', type: 'uint256', indexed: false },
       { name: 'tokenLiquidity', type: 'uint256', indexed: false },
     ],
   },
   {
     type: 'event',
-    name: 'MigratedToBdex',
+    name: 'MigratedToUniswap',
     inputs: [
       { name: 'token', type: 'address', indexed: true },
       { name: 'pair', type: 'address', indexed: true },
-      { name: 'botAmount', type: 'uint256', indexed: false },
+      { name: 'nativeAmount', type: 'uint256', indexed: false },
       { name: 'tokenAmount', type: 'uint256', indexed: false },
       { name: 'liquidity', type: 'uint256', indexed: false },
     ],
@@ -88,7 +88,7 @@ export const curveAbi = [
   { type: 'function', name: 'graduated', stateMutability: 'view', inputs: [], outputs: [{ type: 'bool' }] },
   { type: 'function', name: 'migrated', stateMutability: 'view', inputs: [], outputs: [{ type: 'bool' }] },
   { type: 'function', name: 'externalPair', stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] },
-  { type: 'function', name: 'realBotReserves', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
+  { type: 'function', name: 'realNativeReserves', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'buyTaxBps', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
   { type: 'function', name: 'sellTaxBps', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
 ] as const
@@ -117,7 +117,7 @@ export const vyntraMarketAbi = [
     name: 'BuyVyntra',
     inputs: [
       { name: 'buyer', type: 'address', indexed: true },
-      { name: 'botIn', type: 'uint256', indexed: false },
+      { name: 'nativeIn', type: 'uint256', indexed: false },
       { name: 'vyntraOut', type: 'uint256', indexed: false },
     ],
   },
@@ -127,7 +127,61 @@ export const vyntraMarketAbi = [
     inputs: [
       { name: 'seller', type: 'address', indexed: true },
       { name: 'vyntraIn', type: 'uint256', indexed: false },
-      { name: 'botOut', type: 'uint256', indexed: false },
+      { name: 'nativeOut', type: 'uint256', indexed: false },
+    ],
+  },
+] as const
+
+export const reserveVaultAbi = [
+  {
+    type: 'event',
+    name: 'BucketReallocated',
+    inputs: [
+      { name: 'fromBucket', type: 'uint8', indexed: true },
+      { name: 'toBucket', type: 'uint8', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'CampaignCreated',
+    inputs: [
+      { name: 'campaignId', type: 'uint256', indexed: true },
+      { name: 'bucket', type: 'uint8', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+      { name: 'merkleRoot', type: 'bytes32', indexed: false },
+      { name: 'metadataHash', type: 'bytes32', indexed: false },
+      { name: 'metadataURI', type: 'string', indexed: false },
+      { name: 'claimStart', type: 'uint64', indexed: false },
+      { name: 'claimEnd', type: 'uint64', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'CampaignClaimed',
+    inputs: [
+      { name: 'campaignId', type: 'uint256', indexed: true },
+      { name: 'recipient', type: 'address', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'CampaignExpired',
+    inputs: [
+      { name: 'campaignId', type: 'uint256', indexed: true },
+      { name: 'bucket', type: 'uint8', indexed: true },
+      { name: 'unclaimedReturned', type: 'uint256', indexed: false },
+    ],
+  },
+  {
+    type: 'event',
+    name: 'ReserveReleaseRecorded',
+    inputs: [
+      { name: 'campaignId', type: 'uint256', indexed: true },
+      { name: 'amount', type: 'uint256', indexed: false },
+      { name: 'rollingOutflow', type: 'uint256', indexed: false },
+      { name: 'annualCap', type: 'uint256', indexed: false },
     ],
   },
 ] as const

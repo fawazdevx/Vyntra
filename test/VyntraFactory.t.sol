@@ -6,7 +6,7 @@ import {VyntraFactory} from "../src/VyntraFactory.sol";
 import {VyntraCurve} from "../src/VyntraCurve.sol";
 import {VyntraToken} from "../src/VyntraToken.sol";
 import {VyntraRevenueSplitter} from "../src/VyntraRevenueSplitter.sol";
-import {MockBdexRouter} from "./mocks/MockBdexRouter.sol";
+import {MockUniswapV2Router} from "./mocks/MockUniswapV2Router.sol";
 
 contract VyntraFactoryTest is Test {
     VyntraFactory factory;
@@ -76,7 +76,7 @@ contract VyntraFactoryTest is Test {
 
         uint256 bal = VyntraToken(token).balanceOf(alice);
         assertGt(bal, 0);
-        assertEq(VyntraCurve(payable(curve)).realBotReserves(), 0.1 ether - (0.1 ether * 125) / 10_000);
+        assertEq(VyntraCurve(payable(curve)).realNativeReserves(), 0.1 ether - (0.1 ether * 125) / 10_000);
     }
 
     function test_BuyAndSell() public {
@@ -94,9 +94,9 @@ contract VyntraFactoryTest is Test {
         VyntraToken(token).approve(curve, bobTokens);
         uint256 bobBefore = bob.balance;
         vm.prank(bob);
-        uint256 botOut = VyntraCurve(payable(curve)).sell(bobTokens / 2, 0);
-        assertGt(botOut, 0);
-        assertEq(bob.balance, bobBefore + botOut);
+        uint256 nativeOut = VyntraCurve(payable(curve)).sell(bobTokens / 2, 0);
+        assertGt(nativeOut, 0);
+        assertEq(bob.balance, bobBefore + nativeOut);
     }
 
     function test_AntiSnipeBlocksNonCreatorOnLaunchBlock() public {
@@ -124,7 +124,7 @@ contract VyntraFactoryTest is Test {
         assertEq(VyntraCurve(payable(curve)).creatorFees(), 0);
     }
 
-    function test_GraduationKeepsTradingOpenWithoutBdex() public {
+    function test_GraduationKeepsTradingOpenWithoutUniswap() public {
         (address token, address curve) = _spawn(alice, "Grad", "GRD", "ipfs://img", "desc", address(0));
         vm.roll(block.number + 4);
 
@@ -139,7 +139,7 @@ contract VyntraFactoryTest is Test {
             keccak256(bytes("amm"))
         );
 
-        // Without BDEX router, trading continues on the locked internal AMM
+        // Without Uniswap router, trading continues on the locked internal AMM
         uint256 before = VyntraToken(token).balanceOf(bob);
         vm.prank(bob);
         VyntraCurve(payable(curve)).buy{value: 0.05 ether}(0, address(0));
@@ -149,21 +149,21 @@ contract VyntraFactoryTest is Test {
         vm.prank(bob);
         VyntraToken(token).approve(curve, bal);
         vm.prank(bob);
-        uint256 botOut = VyntraCurve(payable(curve)).sell(bal / 4, 0);
-        assertGt(botOut, 0);
+        uint256 nativeOut = VyntraCurve(payable(curve)).sell(bal / 4, 0);
+        assertGt(nativeOut, 0);
 
         assertEq(tokenId_safe(token), 1);
     }
 
-    function test_GraduationMigratesToBdex() public {
-        MockBdexRouter bdex = new MockBdexRouter();
-        VyntraFactory bdexFactory = new VyntraFactory(treasury, GRAD_THRESHOLD, address(bdex));
+    function test_GraduationMigratesToUniswap() public {
+        MockUniswapV2Router uniswap = new MockUniswapV2Router();
+        VyntraFactory uniswapFactory = new VyntraFactory(treasury, GRAD_THRESHOLD, address(uniswap));
 
         vm.prank(alice);
         (address token, address curve) =
-            bdexFactory.spawn("Migrate", "MIG", "ipfs://m", "migrate me", address(0), 0, 0, 0, 0, 0, 0);
+            uniswapFactory.spawn("Migrate", "MIG", "ipfs://m", "migrate me", address(0), 0, 0, 0, 0, 0, 0);
 
-        assertEq(VyntraCurve(payable(curve)).bdexRouter(), address(bdex));
+        assertEq(VyntraCurve(payable(curve)).uniswapV2Router(), address(uniswap));
 
         vm.roll(block.number + 4);
         vm.prank(bob);
@@ -181,15 +181,15 @@ contract VyntraFactoryTest is Test {
         VyntraCurve(payable(curve)).buy{value: 0.01 ether}(0, address(0));
 
         // Optional manual migrate locks LP and closes the curve.
-        VyntraCurve(payable(curve)).migrateToBdex();
+        VyntraCurve(payable(curve)).migrateToUniswap();
 
         assertTrue(VyntraCurve(payable(curve)).migrated());
         assertTrue(VyntraCurve(payable(curve)).externalPair() != address(0));
         assertEq(
             keccak256(bytes(VyntraCurve(payable(curve)).tradeVenue())),
-            keccak256(bytes("bdex"))
+            keccak256(bytes("uniswap"))
         );
-        assertEq(VyntraCurve(payable(curve)).realBotReserves(), 0);
+        assertEq(VyntraCurve(payable(curve)).realNativeReserves(), 0);
 
         vm.prank(bob);
         vm.expectRevert(VyntraCurve.Migrated.selector);
@@ -211,7 +211,7 @@ contract VyntraFactoryTest is Test {
             address(0x000000000000000000000000000000000000dEaD)
         ), 0);
 
-        // Token should sit in the BDEX pair
+        // Token should sit in the Uniswap pair
         assertGt(VyntraToken(token).balanceOf(VyntraCurve(payable(curve)).externalPair()), 0);
     }
 
@@ -361,10 +361,10 @@ contract VyntraFactoryTest is Test {
         uint256 liq = s.liquidityAccrued();
         assertGt(liq, 0);
 
-        uint256 reservesBefore = VyntraCurve(payable(curve)).realBotReserves();
+        uint256 reservesBefore = VyntraCurve(payable(curve)).realNativeReserves();
         s.injectLiquidity(liq);
         assertEq(s.liquidityAccrued(), 0);
-        assertEq(VyntraCurve(payable(curve)).realBotReserves(), reservesBefore + liq);
+        assertEq(VyntraCurve(payable(curve)).realNativeReserves(), reservesBefore + liq);
     }
 
     function test_ClaimDividends() public {

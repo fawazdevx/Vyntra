@@ -1,17 +1,19 @@
 import { Link } from 'react-router-dom'
-import { Star } from 'lucide-react'
-import { formatBot, shortAddr, type LaunchView } from '../lib/config'
+import { Sparkles, Star } from 'lucide-react'
+import { formatNative, shortAddr, type LaunchView } from '../lib/config'
 import { useWatchlist } from '../hooks/useWatchlist'
-import { BotUsd } from './BotUsd'
+import { HypeUsd } from './HypeUsd'
 
 type Props = {
   launch: LaunchView
   index?: number
+  featuredUntil?: number
 }
 
-export function TokenCard({ launch }: Props) {
+export function TokenCard({ launch, featuredUntil }: Props) {
   const progress = Math.min(100, launch.progressBps / 100)
   const initials = launch.symbol.slice(0, 2).toUpperCase()
+  const isFeatured = Boolean(featuredUntil && featuredUntil > Date.now() / 1000)
   const { isWatched, toggle } = useWatchlist()
   const watched = isWatched(launch.id)
 
@@ -44,16 +46,26 @@ export function TokenCard({ launch }: Props) {
             )}
             {(launch.migrated || launch.graduated) && (
               <span className="absolute -bottom-1 -right-1 rounded bg-[var(--vyntra-success)] px-1.5 py-0.5 font-mono text-[10px] font-bold text-white">
-                {launch.migrated ? 'LOCKED' : 'LIVE'}
+                {launch.migrated ? 'LP BURNED' : 'LIVE'}
               </span>
             )}
           </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="truncate font-display text-lg tracking-tight text-[var(--vyntra-fg)]">
-                {launch.name}
-              </h3>
+              <div className="flex min-w-0 items-center gap-2">
+                <h3 className="truncate font-display text-lg tracking-tight text-[var(--vyntra-fg)]">
+                  {launch.name}
+                </h3>
+                {isFeatured ? (
+                  <span
+                    title="Paid featured placement; the VYNTRA fee is burned"
+                    className="chip-live inline-flex shrink-0 items-center gap-1"
+                  >
+                    <Sparkles className="h-3 w-3" /> Paid
+                  </span>
+                ) : null}
+              </div>
               <span className="shrink-0 font-mono text-sm text-[var(--vyntra-muted)]">
                 ${launch.symbol}
               </span>
@@ -80,8 +92,8 @@ export function TokenCard({ launch }: Props) {
                   : `${progress.toFixed(0)}% to graduate`}
             </span>
             <span className="text-right font-mono text-base text-[var(--vyntra-fg)]">
-              {formatBot(launch.raisedBot)} BOT
-              <BotUsd value={launch.raisedBot} />
+              {formatNative(launch.raisedNative)} HYPE
+              <HypeUsd value={launch.raisedNative} />
             </span>
           </div>
           <div className="progress-track">

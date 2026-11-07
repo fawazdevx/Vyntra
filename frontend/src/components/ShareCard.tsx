@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Check, Copy, Share2 } from 'lucide-react'
-import { formatBot, type LaunchView } from '../lib/config'
+import { formatNative, type LaunchView } from '../lib/config'
 
 type Props = {
   launch: LaunchView
@@ -16,11 +16,11 @@ export function ShareCard({ launch, compact }: Props) {
 
   const shareText = useMemo(() => {
     const status = launch.migrated
-      ? 'LP locked on BDEX'
+      ? 'Legacy market migrated'
       : launch.graduated
         ? 'graduated'
         : `${Math.min(100, launch.progressBps / 100).toFixed(0)}% to graduate`
-    return `$${launch.symbol} · ${launch.name} — ${status} · ${formatBot(launch.raisedBot)} BOT raised on Vyntra`
+    return `$${launch.symbol} · ${launch.name} — ${status} · ${formatNative(launch.raisedNative)} HYPE raised on Vyntra`
   }, [launch])
 
   async function copyLink() {

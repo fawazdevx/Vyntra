@@ -17,14 +17,14 @@ function launchJson(row: Record<string, unknown>) {
     description: row.description,
     createdAt: Number(row.created_at) * 1000,
     progressBps: Number(row.progress_bps),
-    raisedBot: Number(row.raised_bot),
+    raisedNative: Number(row.raised_native),
     graduated: Boolean(Number(row.graduated)),
     migrated: Boolean(Number(row.migrated)),
     externalPair: row.external_pair,
     buyTaxBps: Number(row.buy_tax_bps),
     sellTaxBps: Number(row.sell_tax_bps),
     tradeCount: Number(row.trade_count),
-    volumeBot: Number(row.volume_bot),
+    volumeNative: Number(row.volume_native),
     updatedAt: Number(row.updated_at),
   }
 }
@@ -43,7 +43,7 @@ export default async function handler(req: Request) {
   const orderBy: Record<string, string> = {
     trending: 'progress_bps DESC, id DESC',
     new: 'created_at DESC',
-    volume: 'volume_bot DESC',
+    volume: 'volume_native DESC',
     graduated: 'migrated DESC, graduated DESC, id DESC',
   }
   const order = orderBy[sort] || orderBy.trending

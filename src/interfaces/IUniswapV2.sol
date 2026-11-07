@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-/// @notice Minimal Uniswap V2 / BDEX V2 interfaces used for graduation migration.
+/// @notice Minimal Uniswap V2-compatible interfaces used for optional graduation migration.
 interface IUniswapV2Router02 {
     function factory() external view returns (address);
     function WETH() external view returns (address);

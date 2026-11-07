@@ -1,6 +1,8 @@
 import { getAddress, type Address, formatEther } from 'viem'
 
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address
+export const NATIVE_TOKEN_SYMBOL = 'HYPE'
+const ELYSIUM_TESTNET_EXPLORER = 'https://explorer-elysium-testnet.t.conduit.xyz'
 
 function optionalAddress(raw: string | undefined): Address | undefined {
   if (!raw) return undefined
@@ -29,6 +31,9 @@ export const VYNTRA_MARKET = optionalAddress(
 )
 export const BUYBACK_VAULT = optionalAddress(import.meta.env.VITE_BUYBACK_VAULT)
 export const FEE_ROUTER = optionalAddress(import.meta.env.VITE_FEE_ROUTER)
+export const VYNTRA_RESERVE_TIMELOCK = optionalAddress(import.meta.env.VITE_VYNTRA_RESERVE_TIMELOCK)
+export const VYNTRA_RESERVE_VAULT = optionalAddress(import.meta.env.VITE_VYNTRA_RESERVE_VAULT)
+export const VYNTRA_PROMOTION = optionalAddress(import.meta.env.VITE_VYNTRA_PROMOTION)
 export const BOARD_ADDRESS = (optionalAddress(import.meta.env.VITE_BOARD_ADDRESS) ??
   ZERO_ADDRESS) as Address
 export const isBoardConfigured = Boolean(optionalAddress(import.meta.env.VITE_BOARD_ADDRESS))
@@ -60,7 +65,7 @@ export type LaunchView = {
   description: string
   createdAt: number
   progressBps: number
-  raisedBot: number
+  raisedNative: number
   graduated: boolean
   migrated: boolean
   externalPair: Address
@@ -74,10 +79,10 @@ export function shortAddr(addr?: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`
 }
 
-export function formatBot(value: number | string | bigint) {
+export function formatNative(value: number | string | bigint) {
   if (typeof value === 'bigint') {
     const n = Number(formatEther(value))
-    return formatBot(n)
+    return formatNative(n)
   }
   const n = typeof value === 'string' ? Number(value) : value
   if (!Number.isFinite(n)) return '0'
@@ -87,27 +92,13 @@ export function formatBot(value: number | string | bigint) {
   return n.toFixed(4)
 }
 
-export function explorerTx(hash: string, chainId?: number) {
-  const base = chainId === 677 ? 'https://scan.botchain.ai' : 'https://scan.bohr.life'
-  return `${base}/tx/${hash}`
+export function explorerTx(hash: string, _chainId?: number) {
+  return `${ELYSIUM_TESTNET_EXPLORER}/tx/${hash}`
 }
 
-export function explorerAddress(addr: string, chainId?: number) {
-  const base = chainId === 677 ? 'https://scan.botchain.ai' : 'https://scan.bohr.life'
-  return `${base}/address/${addr}`
+export function explorerAddress(addr: string, _chainId?: number) {
+  return `${ELYSIUM_TESTNET_EXPLORER}/address/${addr}`
 }
 
-/** BDEX swap deep-link (token as output currency). */
-export function bdexSwapUrl(token: string) {
-  return `https://dex.botchain.ai/swap?outputCurrency=${token}`
-}
-
-/** BDEX pool / info deep-link when a V2 pair is known. */
-export function bdexPairUrl(pair: string) {
-  return `https://dex.botchain.ai/pools/${pair}`
-}
-
-/** Official BOT Chain bridge (not operated by Vyntra). */
-export const BRIDGE_URL = 'https://bridge.botchain.ai/'
-export const BDEX_URL = 'https://dex.botchain.ai/'
-export const BOT_CHAIN_USDT = '0xaBabc7Ddc03e501d190C676BF3d92ef0e6e87a3C' as Address
+export const ELYSIUM_FAUCET_URL = 'https://elysium.kinetiq.xyz/testnet-faucet'
+export const ELYSIUM_BRIDGE_URL = 'https://testnet.elysium.kinetiq.xyz/bridge'

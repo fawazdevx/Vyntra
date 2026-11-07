@@ -8,8 +8,8 @@ export type HolderRow = {
   balance: number
   bought: number
   sold: number
-  spentBot: number
-  receivedBot: number
+  spentNative: number
+  receivedNative: number
   tradeCount: number
   firstTradeAt: number
   lastTradeAt: number
@@ -45,8 +45,8 @@ export type SniperRow = {
   boughtToken: number
   soldToken: number
   heldToken: number
-  spentBot: number
-  receivedBot: number
+  spentNative: number
+  receivedNative: number
   dumpBps: number
   stillHolding: boolean
   pctOfCirculating: number
@@ -77,8 +77,8 @@ export async function getHolders(
     address: string
     bought: number
     sold: number
-    spent_bot: number
-    received_bot: number
+    spent_native: number
+    received_native: number
     trade_count: number
     first_trade_at: number
     last_trade_at: number
@@ -87,8 +87,8 @@ export async function getHolders(
        trader AS address,
        SUM(CASE WHEN side = 'buy' THEN token_amount ELSE 0 END) AS bought,
        SUM(CASE WHEN side = 'sell' THEN token_amount ELSE 0 END) AS sold,
-       SUM(CASE WHEN side = 'buy' THEN bot_amount ELSE 0 END) AS spent_bot,
-       SUM(CASE WHEN side = 'sell' THEN bot_amount ELSE 0 END) AS received_bot,
+       SUM(CASE WHEN side = 'buy' THEN native_amount ELSE 0 END) AS spent_native,
+       SUM(CASE WHEN side = 'sell' THEN native_amount ELSE 0 END) AS received_native,
        COUNT(*) AS trade_count,
        MIN(timestamp) AS first_trade_at,
        MAX(timestamp) AS last_trade_at
@@ -104,8 +104,8 @@ export async function getHolders(
       bought: r.bought || 0,
       sold: r.sold || 0,
       balance: Math.max((r.bought || 0) - (r.sold || 0), 0),
-      spentBot: r.spent_bot || 0,
-      receivedBot: r.received_bot || 0,
+      spentNative: r.spent_native || 0,
+      receivedNative: r.received_native || 0,
       tradeCount: r.trade_count || 0,
       firstTradeAt: r.first_trade_at || 0,
       lastTradeAt: r.last_trade_at || 0,
@@ -132,8 +132,8 @@ export async function getHolders(
       balance: n.balance,
       bought: n.bought,
       sold: n.sold,
-      spentBot: n.spentBot,
-      receivedBot: n.receivedBot,
+      spentNative: n.spentNative,
+      receivedNative: n.receivedNative,
       tradeCount: n.tradeCount,
       firstTradeAt: n.firstTradeAt,
       lastTradeAt: n.lastTradeAt,
@@ -179,9 +179,9 @@ export async function getSnipers(
     timestamp: number
     block_number: number
     token_amount: number
-    bot_amount: number
+    native_amount: number
   }>(
-    `SELECT trader, timestamp, block_number, token_amount, bot_amount, tx_hash, log_index
+    `SELECT trader, timestamp, block_number, token_amount, native_amount, tx_hash, log_index
      FROM trades
      WHERE launch_id = ? AND side = 'buy'
      ORDER BY block_number ASC, log_index ASC, id ASC`,
@@ -195,7 +195,7 @@ export async function getSnipers(
         sniperCount: 0,
         stillHolding: 0,
         fullyDumped: 0,
-        totalSpentBot: 0,
+        totalSpentNative: 0,
         totalHeldToken: 0,
         heldPctOfCirculating: 0,
         avgDumpBps: 0,
@@ -224,16 +224,16 @@ export async function getSnipers(
     const agg = await queryOne<{
       bought: number
       sold: number
-      spent_bot: number
-      received_bot: number
+      spent_native: number
+      received_native: number
       first_buy_at: number
       first_buy_block: number
     }>(
       `SELECT
          SUM(CASE WHEN side = 'buy' THEN token_amount ELSE 0 END) AS bought,
          SUM(CASE WHEN side = 'sell' THEN token_amount ELSE 0 END) AS sold,
-         SUM(CASE WHEN side = 'buy' THEN bot_amount ELSE 0 END) AS spent_bot,
-         SUM(CASE WHEN side = 'sell' THEN bot_amount ELSE 0 END) AS received_bot,
+         SUM(CASE WHEN side = 'buy' THEN native_amount ELSE 0 END) AS spent_native,
+         SUM(CASE WHEN side = 'sell' THEN native_amount ELSE 0 END) AS received_native,
          MIN(CASE WHEN side = 'buy' THEN timestamp END) AS first_buy_at,
          MIN(CASE WHEN side = 'buy' THEN block_number END) AS first_buy_block
        FROM trades
@@ -255,15 +255,15 @@ export async function getSnipers(
       boughtToken,
       soldToken,
       heldToken,
-      spentBot: agg?.spent_bot || 0,
-      receivedBot: agg?.received_bot || 0,
+      spentNative: agg?.spent_native || 0,
+      receivedNative: agg?.received_native || 0,
       dumpBps,
       stillHolding: heldToken > 1e-12,
       pctOfCirculating: circulating > 0 ? (heldToken / circulating) * 100 : 0,
     })
   }
 
-  const totalSpentBot = snipers.reduce((a, s) => a + s.spentBot, 0)
+  const totalSpentNative = snipers.reduce((a, s) => a + s.spentNative, 0)
   const totalHeldToken = snipers.reduce((a, s) => a + s.heldToken, 0)
   const stillHolding = snipers.filter((s) => s.stillHolding).length
   const fullyDumped = snipers.filter((s) => !s.stillHolding && s.boughtToken > 0).length
@@ -278,7 +278,7 @@ export async function getSnipers(
       sniperCount: snipers.length,
       stillHolding,
       fullyDumped,
-      totalSpentBot,
+      totalSpentNative,
       totalHeldToken,
       heldPctOfCirculating: circulating > 0 ? (totalHeldToken / circulating) * 100 : 0,
       avgDumpBps,

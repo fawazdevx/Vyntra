@@ -11,12 +11,19 @@ interface IKeeperCurve {
     function migrated() external view returns (bool);
 }
 
+interface IKeeperBuybackVault {
+    function maxBuybackAmount() external view returns (uint256);
+    function canExecuteBuyback() external view returns (bool);
+    function quoteBuyAndBurn(uint256 nativeIn) external view returns (uint256);
+    function buyAndBurn(uint256 nativeIn, uint256 minVyntraOut) external returns (uint256);
+}
+
 interface IKeeperSplitter {
     function buybackAccrued() external view returns (uint256);
     function liquidityAccrued() external view returns (uint256);
     function curve() external view returns (address);
-    function buyAndBurnMeme(uint256 botAmount, uint256 minTokensOut) external;
-    function injectLiquidity(uint256 botAmount) external;
+    function buyAndBurnMeme(uint256 nativeAmount, uint256 minTokensOut) external;
+    function injectLiquidity(uint256 nativeAmount) external;
 }
 
 /// @title VyntraKeeper
@@ -32,14 +39,14 @@ contract VyntraKeeper is ReentrancyGuard {
     event ProtocolSweep(
         address indexed caller,
         uint256 curvesTouched,
-        uint256 botClaimed,
-        uint256 botDistributed,
+        uint256 nativeClaimed,
+        uint256 nativeDistributed,
         uint256 vyntraBurned
     );
     event TaxSweep(
         address indexed caller,
         uint256 splittersTouched,
-        uint256 memeBuybackBot,
+        uint256 memeBuybackNative,
         uint256 liquidityInjected
     );
     event CurveSkipped(address indexed curve, bytes reason);
@@ -61,22 +68,17 @@ contract VyntraKeeper is ReentrancyGuard {
     function sweepProtocol(address[] calldata curves, uint256 minVyntraOut)
         external
         nonReentrant
-        returns (uint256 botClaimed, uint256 vyntraBurned)
+        returns (uint256 nativeClaimed, uint256 vyntraBurned)
     {
         if (curves.length > MAX_BATCH) revert BatchTooLarge();
         uint256 touched;
         for (uint256 i = 0; i < curves.length; i++) {
             address c = curves[i];
             if (c == address(0)) continue;
-            try IKeeperCurve(c).protocolFees() returns (uint256 fees) {
-                if (fees == 0) continue;
-                uint256 before = address(feeRouter).balance;
-                try IKeeperCurve(c).claimProtocolFees() {
-                    uint256 got = address(feeRouter).balance - before;
-                    botClaimed += got;
+            try this._claimCurveFees(c) returns (uint256 got) {
+                if (got > 0) {
+                    nativeClaimed += got;
                     touched++;
-                } catch (bytes memory reason) {
-                    emit CurveSkipped(c, reason);
                 }
             } catch (bytes memory reason) {
                 emit CurveSkipped(c, reason);
@@ -91,18 +93,34 @@ contract VyntraKeeper is ReentrancyGuard {
         }
 
         uint256 vaultBal = address(buybackVault).balance;
-        if (vaultBal > 0) {
-            vyntraBurned = buybackVault.buyAndBurn(vaultBal, minVyntraOut);
+        uint256 maxBuyback = buybackVault.maxBuybackAmount();
+        if (vaultBal > 0 && maxBuyback > 0 && buybackVault.canExecuteBuyback()) {
+            uint256 nativeIn = vaultBal < maxBuyback ? vaultBal : maxBuyback;
+            IKeeperBuybackVault vault = IKeeperBuybackVault(address(buybackVault));
+            // The VYNTRA market has its own opening-buy cap. Leave accrued HYPE in the vault
+            // until a buy is quoteable instead of reverting the fee-collection sweep.
+            uint256 quote = vault.quoteBuyAndBurn(nativeIn);
+            if (quote > 0 && minVyntraOut <= quote) {
+                vyntraBurned = vault.buyAndBurn(nativeIn, minVyntraOut);
+            }
         }
 
-        emit ProtocolSweep(msg.sender, touched, botClaimed, distributed, vyntraBurned);
+        emit ProtocolSweep(msg.sender, touched, nativeClaimed, distributed, vyntraBurned);
+    }
+
+    /// @dev External self-call keeps one market's empty fee claim from halting the sweep.
+    function _claimCurveFees(address curve) external returns (uint256 received) {
+        if (msg.sender != address(this)) revert OnlySelf();
+        uint256 beforeBalance = address(feeRouter).balance;
+        IKeeperCurve(curve).claimProtocolFees();
+        received = address(feeRouter).balance - beforeBalance;
     }
 
     /// @notice Run meme tax buyback-burn and LP inject for splitters (skips migrated curves).
     function sweepTax(address[] calldata splitters)
         external
         nonReentrant
-        returns (uint256 memeBuybackBot, uint256 liquidityInjected)
+        returns (uint256 memeBuybackNative, uint256 liquidityInjected)
     {
         if (splitters.length > MAX_BATCH) revert BatchTooLarge();
         uint256 touched;
@@ -112,18 +130,18 @@ contract VyntraKeeper is ReentrancyGuard {
 
             try this._sweepOneSplitter(s) returns (uint256 bb, uint256 liq) {
                 if (bb > 0 || liq > 0) touched++;
-                memeBuybackBot += bb;
+                memeBuybackNative += bb;
                 liquidityInjected += liq;
             } catch (bytes memory reason) {
                 emit SplitterSkipped(s, reason);
             }
         }
 
-        emit TaxSweep(msg.sender, touched, memeBuybackBot, liquidityInjected);
+        emit TaxSweep(msg.sender, touched, memeBuybackNative, liquidityInjected);
     }
 
     /// @dev External so the batch loop can try/catch per splitter.
-    function _sweepOneSplitter(address s) external returns (uint256 memeBot, uint256 liqBot) {
+    function _sweepOneSplitter(address s) external returns (uint256 memeNative, uint256 liqNative) {
         if (msg.sender != address(this)) revert OnlySelf();
 
         IKeeperSplitter sp = IKeeperSplitter(s);
@@ -140,13 +158,13 @@ contract VyntraKeeper is ReentrancyGuard {
         uint256 bb = sp.buybackAccrued();
         if (bb > 0) {
             sp.buyAndBurnMeme(bb, 0);
-            memeBot = bb;
+            memeNative = bb;
         }
 
         uint256 liq = sp.liquidityAccrued();
         if (liq > 0) {
             sp.injectLiquidity(liq);
-            liqBot = liq;
+            liqNative = liq;
         }
     }
 
@@ -158,14 +176,14 @@ contract VyntraKeeper is ReentrancyGuard {
     )
         external
         returns (
-            uint256 botClaimed,
+            uint256 nativeClaimed,
             uint256 vyntraBurned,
-            uint256 memeBuybackBot,
+            uint256 memeBuybackNative,
             uint256 liquidityInjected
         )
     {
         // Re-enter via external self so each path keeps its nonReentrant scope clean.
-        (botClaimed, vyntraBurned) = this.sweepProtocol(curves, minVyntraOut);
-        (memeBuybackBot, liquidityInjected) = this.sweepTax(splitters);
+        (nativeClaimed, vyntraBurned) = this.sweepProtocol(curves, minVyntraOut);
+        (memeBuybackNative, liquidityInjected) = this.sweepTax(splitters);
     }
 }

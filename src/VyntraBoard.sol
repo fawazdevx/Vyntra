@@ -18,7 +18,7 @@ interface IVyntraFactoryView {
 }
 
 /// @title VyntraBoard
-/// @notice On-chain replies for Vyntra launches. Wallet-signed, permanent, gas on BOT.
+/// @notice On-chain replies for Vyntra launches. Wallet-signed, permanent, gas on HYPE.
 contract VyntraBoard {
     uint256 public constant MAX_BODY = 280;
 

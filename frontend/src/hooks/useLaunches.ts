@@ -44,7 +44,7 @@ async function fetchLaunch(
   const [
     progressBps,
     graduated,
-    realBotReserves,
+    realNativeReserves,
     creatorFees,
     buyTaxBps,
     sellTaxBps,
@@ -66,7 +66,7 @@ async function fetchLaunch(
     publicClient.readContract({
       address: launch.curve,
       abi: bondingCurveAbi,
-      functionName: 'realBotReserves',
+      functionName: 'realNativeReserves',
     }),
     publicClient.readContract({
       address: launch.curve,
@@ -129,7 +129,7 @@ async function fetchLaunch(
     description: description || '',
     createdAt: Number(launch.createdAt) * 1000,
     progressBps: Number(progressBps),
-    raisedBot: Number(formatEther(realBotReserves)),
+    raisedNative: Number(formatEther(realNativeReserves)),
     graduated: Boolean(graduated),
     migrated: Boolean(migrated),
     externalPair: (externalPair as Address) || zeroAddress,

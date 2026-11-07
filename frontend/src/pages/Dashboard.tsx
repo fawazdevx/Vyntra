@@ -13,10 +13,10 @@ import { Coins, ExternalLink, Wallet, TrendingUp, Layers } from 'lucide-react'
 import { bondingCurveAbi, revenueSplitterAbi } from '../lib/abis'
 import { activeChain } from '../lib/chains'
 import { useCreatorLaunches } from '../hooks/useLaunches'
-import { explorerTx, formatBot, shortAddr, type LaunchView } from '../lib/config'
+import { explorerTx, formatNative, shortAddr, type LaunchView } from '../lib/config'
 import { formatUserError } from '../lib/errors'
 import { KeeperPanel } from '../components/KeeperPanel'
-import { BotUsd } from '../components/BotUsd'
+import { HypeUsd } from '../components/HypeUsd'
 import { zeroAddress } from 'viem'
 
 type ClaimKind = 'fees' | 'funds' | 'buyback' | 'dividends' | 'liquidity'
@@ -93,7 +93,7 @@ export function Dashboard() {
     setMsg(null)
     reset()
     if (onWrongChain) {
-      setMsg('Switch to BOT Chain first.')
+      setMsg('Switch to Elysium Testnet first.')
       return
     }
     setClaimingKey(key)
@@ -156,7 +156,7 @@ export function Dashboard() {
           <p className="page-kicker mb-2">Studio</p>
           <h1 className="page-title text-4xl sm:text-5xl lg:text-6xl">Your launches</h1>
           <p className="mt-3 max-w-lg text-base text-[var(--vyntra-muted)] sm:text-lg">
-            Coins you launched. Claim protocol creator fees and tax buckets anytime.
+            Collect your share from each locked pool position. The amount shown includes fees already collected on-chain.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -181,9 +181,9 @@ export function Dashboard() {
         <Stat icon={Layers} label="Your launches" value={isConnected ? String(shown.length) : '—'} />
         <Stat
           icon={TrendingUp}
-          label="Claimable fees"
-          value={isConnected ? `${formatBot(totalFeesEst)} BOT` : '—'}
-          sub={isConnected ? <BotUsd value={totalFeesEst} /> : null}
+          label="Collected fees"
+          value={isConnected ? `${formatNative(totalFeesEst)} HYPE` : '—'}
+          sub={isConnected ? <HypeUsd value={totalFeesEst} /> : null}
           mono
         />
         <Stat icon={Wallet} label="Wallet" value={isConnected ? shortAddr(address) : 'Not connected'} />
@@ -246,12 +246,12 @@ export function Dashboard() {
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-[var(--vyntra-faint)]">
                             <span className="font-mono text-[var(--vyntra-muted)]">
-                              {formatBot(l.raisedBot)} BOT raised
-                              <BotUsd value={l.raisedBot} className="ml-1 inline text-[11px] font-normal" />
+                              {formatNative(l.raisedNative)} HYPE raised
+                              <HypeUsd value={l.raisedNative} className="ml-1 inline text-[11px] font-normal" />
                             </span>
                             <span className="font-mono text-[var(--vyntra-success)]">
-                              {formatBot(fees)} BOT fees
-                              <BotUsd value={fees} className="ml-1 inline text-[11px] font-normal" />
+                              {formatNative(fees)} HYPE collected
+                              <HypeUsd value={fees} className="ml-1 inline text-[11px] font-normal" />
                             </span>
                             <span>
                               {l.graduated ? 'Graduated' : `${progress.toFixed(0)}% to graduate`}
@@ -274,10 +274,14 @@ export function Dashboard() {
                         <button
                           type="button"
                           className="btn-ghost px-3.5 py-2 text-sm"
-                          disabled={busy || fees <= 0}
+                          disabled={busy}
                           onClick={() => claimFees(l.curve)}
                         >
-                          {claimingKey === `fees-${l.curve}` && busy ? 'Claiming…' : 'Claim fees'}
+                          {claimingKey === `fees-${l.curve}` && busy
+                            ? 'Collecting…'
+                            : fees > 0
+                              ? 'Claim fees'
+                              : 'Collect & claim'}
                         </button>
                         <Link to={`/token/${l.id}`} className="btn-ghost px-3.5 py-2 text-sm">
                           <ExternalLink className="h-3.5 w-3.5" />
@@ -386,8 +390,8 @@ function TaxBucket({
     <div className="flex items-center justify-between gap-2 rounded-md bg-[var(--vyntra-elev)] px-3 py-2">
       <div>
         <div className="label">{label}</div>
-        <div className="mt-0.5 font-mono text-sm">{formatBot(n)} BOT</div>
-        <BotUsd value={n} />
+        <div className="mt-0.5 font-mono text-sm">{formatNative(n)} HYPE</div>
+        <HypeUsd value={n} />
       </div>
       <button
         type="button"

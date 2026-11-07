@@ -92,7 +92,7 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
       return
     }
     if (onWrongChain) {
-      setMsg('Switch to BOT Chain to continue.')
+      setMsg('Switch to Elysium Testnet to continue.')
       return
     }
     writeContract({
@@ -130,7 +130,7 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
           value={body}
           maxLength={MAX_BODY}
           onChange={(e) => setBody(e.target.value)}
-          placeholder="Say something on-chain… (gas on BOT)"
+          placeholder="Say something on-chain… (gas on HYPE)"
         />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="font-mono text-xs text-[var(--vyntra-faint)]">

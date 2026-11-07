@@ -13,27 +13,27 @@ import { parseEther, formatEther, maxUint256, zeroAddress } from 'viem'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { ArrowLeft, Copy, ExternalLink, Star } from 'lucide-react'
 import { bondingCurveAbi, erc20Abi } from '../lib/abis'
-import { activeChain, isMainnet } from '../lib/chains'
+import { activeChain } from '../lib/chains'
 import { useLaunch } from '../hooks/useLaunches'
 import { useTradeHistory } from '../hooks/useTradeHistory'
 import { useWatchlist } from '../hooks/useWatchlist'
 import { PriceChart } from '../components/PriceChart'
-import { GeckoTerminalChart } from '../components/GeckoTerminalChart'
 import { TradeTape } from '../components/TradeTape'
 import { HoldersPanel } from '../components/HoldersPanel'
 import { ReplyThread } from '../components/ReplyThread'
 import { ShareCard } from '../components/ShareCard'
-import { BotUsd } from '../components/BotUsd'
-import {
-  BDEX_URL,
-  explorerAddress,
-  explorerTx,
-  formatBot,
-  shortAddr,
-} from '../lib/config'
+import { LaunchPromotionControl } from '../components/LaunchPromotionControl'
+import { HypeUsd } from '../components/HypeUsd'
+import { explorerAddress, explorerTx, formatNative, shortAddr } from '../lib/config'
 import { formatUserError } from '../lib/errors'
 
 const PCTS = [25, 50, 75, 100] as const
+const SLIPPAGE_OPTIONS = [50, 100, 200, 500] as const
+
+function minimumReceived(quote: bigint, slippageBps: number) {
+  const minimum = (quote * BigInt(10_000 - slippageBps)) / 10_000n
+  return minimum > 0n ? minimum : 1n
+}
 
 function safeParseEther(value: string): bigint | null {
   const v = value.trim()
@@ -61,6 +61,7 @@ export function Token() {
   const { switchChain, isPending: switching } = useSwitchChain()
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
   const [amount, setAmount] = useState('0.1')
+  const [slippageBps, setSlippageBps] = useState(100)
   const [copied, setCopied] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
@@ -76,7 +77,7 @@ export function Token() {
   )
   const { isWatched, toggle } = useWatchlist()
 
-  const { data: botBalance } = useBalance({
+  const { data: nativeBalance } = useBalance({
     address,
     chainId: activeChain.id,
     query: { enabled: Boolean(address) },
@@ -126,7 +127,21 @@ export function Token() {
     query: { enabled: Boolean(launch?.curve), refetchInterval: 5_000 },
   })
 
-  // Graduation → optional BDEX migrate; curve trading stops once migrated
+  const { data: poolManager } = useReadContract({
+    address: launch?.curve,
+    abi: bondingCurveAbi,
+    functionName: 'poolManager',
+    query: { enabled: Boolean(launch?.curve) },
+  })
+
+  const { data: poolId } = useReadContract({
+    address: launch?.curve,
+    abi: bondingCurveAbi,
+    functionName: 'poolId',
+    query: { enabled: Boolean(launch?.curve) },
+  })
+
+  // Graduation is only a status milestone; the same v4 pool continues trading.
   const isGraduated = liveGraduated === true || launch?.graduated === true
   const isMigrated = liveMigrated === true || launch?.migrated === true
   const externalPair =
@@ -187,9 +202,9 @@ export function Token() {
 
   const spot = useMemo(() => {
     if (!reserves) return null
-    const [botR, tokR] = reserves
+    const [nativeR, tokR] = reserves
     if (tokR === 0n) return null
-    const price = Number(formatEther(botR)) / Number(formatEther(tokR))
+    const price = Number(formatEther(nativeR)) / Number(formatEther(tokR))
     return { price, mcap: price * 1_000_000_000 }
   }, [reserves])
 
@@ -207,7 +222,7 @@ export function Token() {
 
   function setPercent(pct: number) {
     if (side === 'buy') {
-      const bal = botBalance?.value ?? 0n
+      const bal = nativeBalance?.value ?? 0n
       if (bal === 0n) {
         setAmount('0')
         return
@@ -244,7 +259,7 @@ export function Token() {
     reset()
 
     if (isMigrated) {
-      setMsg('This market migrated. Curve trading is closed — import the token on BDEX if you need the external pair.')
+      setMsg('This legacy market migrated and is no longer tradable through Vyntra.')
       return
     }
     if (!isConnected || !address) {
@@ -252,7 +267,7 @@ export function Token() {
       return
     }
     if (onWrongChain) {
-      setMsg('Switch to BOT Chain to continue.')
+      setMsg('Switch to Elysium Testnet to continue.')
       return
     }
     if (parsedAmount == null || parsedAmount <= 0n) {
@@ -260,13 +275,26 @@ export function Token() {
       return
     }
 
+    const quote = side === 'buy' ? buyQuote?.[0] : sellQuote?.[0]
+    if (quote == null) {
+      setMsg('Waiting for a fresh price quote. Try again in a moment.')
+      return
+    }
+    if (quote === 0n) {
+      setMsg(side === 'buy'
+        ? 'This buy exceeds the opening limit or available pool depth. Reduce the amount or try again later.'
+        : 'There is not enough pool depth for this sell amount.')
+      return
+    }
+    const minReceived = minimumReceived(quote, slippageBps)
+
     try {
       if (side === 'buy') {
         await writeContractAsync({
           address: launch.curve,
           abi: bondingCurveAbi,
           functionName: 'buy',
-          args: [0n, zeroAddress],
+          args: [minReceived, zeroAddress],
           value: parsedAmount,
           chainId: activeChain.id,
         })
@@ -286,7 +314,7 @@ export function Token() {
           address: launch.curve,
           abi: bondingCurveAbi,
           functionName: 'sell',
-          args: [parsedAmount, 0n],
+          args: [parsedAmount, minReceived],
           chainId: activeChain.id,
         })
       }
@@ -346,13 +374,16 @@ export function Token() {
           </button>
           <ShareCard launch={launch} compact />
           <span className="chip">{activeChain.testnet ? 'Testnet' : 'Mainnet'}</span>
+          <span className={launch.token.toLowerCase().endsWith('7f7') ? 'chip-live' : 'chip'}>
+            {launch.token.toLowerCase().endsWith('7f7') ? 'Vyntra address · 7f7' : 'Address suffix mismatch'}
+          </span>
           {hasTax && (
             <span className="chip">
               Tax {(launch.buyTaxBps / 100).toFixed(0)}%/{(launch.sellTaxBps / 100).toFixed(0)}%
             </span>
           )}
           {isMigrated ? (
-            <span className="chip-live">LP locked</span>
+            <span className="chip-live">LP burned</span>
           ) : isGraduated ? (
             <span className="chip-live">Graduated</span>
           ) : (
@@ -386,10 +417,10 @@ export function Token() {
         <div className="flex flex-wrap gap-7 sm:gap-10">
           <Metric
             label="Market cap / FDV"
-            value={`${formatBot(spot?.mcap ?? lastTrade?.mcap ?? 0)} BOT`}
+            value={`${formatNative(spot?.mcap ?? lastTrade?.mcap ?? 0)} HYPE`}
             sub={
               <div className="mt-1 space-y-1">
-                <BotUsd value={spot?.mcap ?? lastTrade?.mcap ?? 0} className="text-xs text-zinc-400" />
+                <HypeUsd value={spot?.mcap ?? lastTrade?.mcap ?? 0} className="text-xs text-zinc-400" />
                 {changePct !== 0 ? (
                   <span className={changePct >= 0 ? 'block text-emerald-400' : 'block text-rose-400'}>
                     {changePct >= 0 ? '+' : ''}
@@ -403,8 +434,8 @@ export function Token() {
           />
           <Metric
             label="Raised"
-            value={`${formatBot(launch.raisedBot)} BOT`}
-            sub={<BotUsd value={launch.raisedBot} className="text-xs text-zinc-400" />}
+            value={`${formatNative(launch.raisedNative)} HYPE`}
+            sub={<HypeUsd value={launch.raisedNative} className="text-xs text-zinc-400" />}
           />
           <Metric label="Trades" value={String(trades.length)} />
           <Metric
@@ -435,9 +466,6 @@ export function Token() {
             error={tradesError}
             onRetry={() => void refetchTrades()}
           />
-          {isMainnet && isMigrated && externalPair !== zeroAddress && (
-            <GeckoTerminalChart poolAddress={externalPair} />
-          )}
           {!tradesLoading && !(tradesError && trades.length === 0) && (
             <TradeTape trades={trades} symbol={launch.symbol} />
           )}
@@ -447,6 +475,7 @@ export function Token() {
 
         <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
           <ShareCard launch={launch} />
+          <LaunchPromotionControl launch={launch} />
           <div className="card p-5">
             {!isMigrated && (
             <div className="mb-5 flex gap-1.5 rounded-lg bg-black/45 p-1.5">
@@ -477,9 +506,8 @@ export function Token() {
               <div className="mb-4 space-y-3 rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] px-4 py-3 text-sm">
                 <div className="font-semibold text-[var(--vyntra-fg)]">Trading closed on Vyntra</div>
                 <p className="leading-relaxed text-[var(--vyntra-muted)]">
-                  This launch migrated liquidity to a BDEX V2 pool, so the bonding curve can no longer
-                  buy or sell this token. Newer launches stay tradeable on Vyntra after graduation. Use
-                  the pool link below to view the migrated market.
+                  This legacy launch moved its liquidity out of its Vyntra market. New launches keep
+                  trading in their original locked Uniswap v4 pool.
                 </p>
                 {externalPair !== zeroAddress && (
                   <p className="font-mono text-xs text-[var(--vyntra-faint)]">
@@ -513,24 +541,25 @@ export function Token() {
                       Token contract
                       <ExternalLink className="h-4 w-4" />
                     </a>
-                    <a
-                      href={BDEX_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn-ghost inline-flex flex-1 justify-center"
-                    >
-                      Open BDEX
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
+                    {externalPair !== zeroAddress && (
+                      <a
+                        href={explorerAddress(externalPair, activeChain.id)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-ghost inline-flex flex-1 justify-center"
+                      >
+                        Uniswap pair
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    )}
                   </div>
                 </div>
               </div>
             ) : isGraduated ? (
               <div className="mb-4 space-y-2 rounded-lg border border-[rgba(15,122,78,0.3)] bg-[rgba(15,122,78,0.08)] px-4 py-3 text-sm text-[var(--vyntra-success)]">
-                <div className="font-semibold">Graduated — still tradeable here</div>
+                <div className="font-semibold">Graduated — pool stays live</div>
                 <p className="leading-relaxed opacity-90">
-                  Launch goal reached. Buy and sell stay on Vyntra. For an external market on mainnet,
-                  import the token contract on BDEX.
+                  The launch goal is a status milestone. Trading continues in this same permanently locked Uniswap v4 pool.
                 </p>
               </div>
             ) : null}
@@ -543,14 +572,14 @@ export function Token() {
 
             <label className="block space-y-2.5">
               <div className="flex justify-between text-sm text-zinc-400">
-                <span>{side === 'buy' ? 'Pay (BOT)' : `Sell ($${launch.symbol})`}</span>
+                <span>{side === 'buy' ? 'Pay (HYPE)' : `Sell ($${launch.symbol})`}</span>
                 <span className="font-mono text-zinc-300">
                   {side === 'buy'
-                    ? `Bal ${formatBot(botBalance?.value ?? 0n)} BOT`
-                    : `Bal ${formatBot(tokenBalance ?? 0n)} $${launch.symbol}`}
+                    ? `Bal ${formatNative(nativeBalance?.value ?? 0n)} HYPE`
+                    : `Bal ${formatNative(tokenBalance ?? 0n)} $${launch.symbol}`}
                   {side === 'buy' && (
-                    <BotUsd
-                      value={Number(formatEther(botBalance?.value ?? 0n))}
+                    <HypeUsd
+                      value={Number(formatEther(nativeBalance?.value ?? 0n))}
                       className="block text-right text-[11px] font-normal text-zinc-500"
                     />
                   )}
@@ -565,7 +594,7 @@ export function Token() {
                 value={amount}
                 onChange={(e) => onAmountChange(e.target.value)}
               />
-              {side === 'buy' && <BotUsd value={Number(amount) || 0} className="text-xs text-zinc-500" />}
+              {side === 'buy' && <HypeUsd value={Number(amount) || 0} className="text-xs text-zinc-500" />}
             </label>
 
             <div className="mt-3 grid grid-cols-4 gap-2">
@@ -583,7 +612,32 @@ export function Token() {
             </div>
 
             <div className="mt-4 space-y-2 rounded-xl border border-white/[0.06] bg-black/35 px-4 py-3.5 text-sm">
-              <Row label="Protocol fee" value="1.25%" />
+              <Row label="Uniswap v4 pool fee" value="1.00%" />
+              <div className="flex flex-wrap items-center justify-between gap-2 py-1">
+                <span className="text-zinc-500">Max slippage</span>
+                <div className="flex gap-1.5">
+                  {SLIPPAGE_OPTIONS.map((bps) => (
+                    <button
+                      key={bps}
+                      type="button"
+                      aria-pressed={slippageBps === bps}
+                      onClick={() => setSlippageBps(bps)}
+                      className={`rounded-md px-2.5 py-1.5 font-mono text-xs transition ${
+                        slippageBps === bps
+                          ? 'bg-cyan-500/20 text-cyan-200'
+                          : 'bg-white/[0.04] text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {bps / 100}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {side === 'buy' && buyQuote?.[0] === 0n && (
+                <p className="text-xs text-amber-300">
+                  Opening limit or pool depth reached. Early buys share a 2% supply cap for the first three blocks.
+                </p>
+              )}
               {hasTax && (
                 <Row
                   label="Creator tax"
@@ -593,17 +647,17 @@ export function Token() {
               {hasTax && memeTaxWei > 0n && (
                 <Row
                   label="Tax amount"
-                  value={<span>{formatBot(memeTaxWei)} BOT<BotUsd value={Number(formatEther(memeTaxWei))} /></span>}
+                  value={<span>{formatNative(memeTaxWei)} HYPE<HypeUsd value={Number(formatEther(memeTaxWei))} /></span>}
                   mono
                 />
               )}
               {side === 'buy' && buyQuote ? (
-                <Row label="You receive" value={`~${formatBot(buyQuote[0])} $${launch.symbol}`} mono />
+                <Row label="You receive" value={`~${formatNative(buyQuote[0])} $${launch.symbol}`} mono />
               ) : null}
               {side === 'sell' && sellQuote ? (
                 <Row
                   label="You receive"
-                  value={<span>~{formatBot(sellQuote[0])} BOT<BotUsd value={Number(formatEther(sellQuote[0]))} /></span>}
+                  value={<span>~{formatNative(sellQuote[0])} HYPE<HypeUsd value={Number(formatEther(sellQuote[0]))} /></span>}
                   mono
                 />
               ) : null}
@@ -622,7 +676,7 @@ export function Token() {
                   disabled={switching}
                   onClick={() => switchChain({ chainId: activeChain.id })}
                 >
-                  {switching ? 'Switching…' : 'Switch to BOT Chain'}
+                  {switching ? 'Switching…' : 'Switch to Elysium Testnet'}
                 </button>
               ) : (
                 <button
@@ -676,6 +730,8 @@ export function Token() {
             <div className="space-y-3">
               <AddrRow label="Token" addr={launch.token} />
               <AddrRow label="Market" addr={launch.curve} />
+              {poolManager && <AddrRow label="PoolManager" addr={poolManager} />}
+              {poolId && <PoolIdRow value={poolId} copied={copied} onCopy={() => void copyAddr(poolId)} />}
               <AddrRow label="Creator" addr={launch.creator} />
             </div>
           </div>
@@ -727,6 +783,31 @@ function AddrRow({ label, addr }: { label: string; addr: string }) {
         {shortAddr(addr)}
         <ExternalLink className="h-4 w-4" />
       </a>
+    </div>
+  )
+}
+
+function PoolIdRow({
+  value,
+  copied,
+  onCopy,
+}: {
+  value: `0x${string}`
+  copied: boolean
+  onCopy: () => void
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span>Uniswap v4 pool ID</span>
+      <button
+        type="button"
+        title={value}
+        onClick={onCopy}
+        className="inline-flex items-center gap-1.5 font-mono text-zinc-300 hover:text-cyan-300"
+      >
+        {copied ? 'Copied' : `${value.slice(0, 10)}…${value.slice(-8)}`}
+        <Copy className="h-3.5 w-3.5" />
+      </button>
     </div>
   )
 }

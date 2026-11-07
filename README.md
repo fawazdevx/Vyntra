@@ -6,7 +6,7 @@
          ╚████╔╝    ██║   ██║ ╚████║   ██║   ██║  ██║██║  ██║
           ╚═══╝     ╚═╝   ╚═╝  ╚═══╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝
 
-        Permissionless memecoin launches on BOT Chain.
+        Permissionless memecoin launches on Elysium Testnet.
         Public product overview belongs here.
 -->
 
@@ -21,7 +21,7 @@
 
 <br/>
 
-[![BOT](https://img.shields.io/badge/BOT_Chain-Testnet_968-22C55E?style=flat-square&labelColor=111827)](https://scan.bohr.life)
+[![Elysium](https://img.shields.io/badge/Elysium-Testnet_99801-22C55E?style=flat-square&labelColor=111827)](https://explorer-elysium-testnet.t.conduit.xyz)
 [![Foundry](https://img.shields.io/badge/Contracts-Foundry-F97316?style=flat-square&labelColor=111827)](./src)
 [![React](https://img.shields.io/badge/Frontend-React_+_Vite-61DAFB?style=flat-square&logo=react&logoColor=white&labelColor=111827)](./frontend)
 [![Indexer](https://img.shields.io/badge/Indexer-SQLite_+_Hono-A855F7?style=flat-square&labelColor=111827)](./indexer)
@@ -31,9 +31,9 @@
 
 <br/>
 
-> **Vyntra is a permissionless memecoin launchpad on BOT Chain.** Creators launch with on-chain metadata, traders discover and buy on a bonding curve that stays open after graduation, and protocol fees buy and burn `$VYNTRA`.
+> **Vyntra is a permissionless launchpad on Elysium Testnet.** Each token launches directly into a HYPE-paired Uniswap v4 pool. The pool uses no custom hook, its full-range liquidity position cannot be withdrawn, and graduation records progress without moving liquidity. Protocol revenue supports `$VYNTRA` buybacks.
 
-Vyntra keeps the full launch lifecycle on one venue: fair curve discovery, locked post-grad trading, optional creator tax, creator fee claims, BDEX migration when configured, and a fixed-supply platform token as the protocol sink.
+The factory creates each token, initializes its pool, and deposits the full token supply plus the creator's HYPE seed in one transaction. The opening price is derived from those amounts. Seeds are bounded to 5–100 HYPE, and aggregate buys during the first three blocks cannot exceed 2% of token supply.
 
 ---
 
@@ -44,19 +44,18 @@ Most launchpads either abandon traders after graduation or skim fees with no cle
 Vyntra answers:
 
 - Can anyone launch with required image, description, and a unique ticker?
-- Do buys and sells stay open after the graduation milestone?
-- Do creators earn a clear share of every trade?
-- Can creators optionally add a buy/sell tax with an explicit split?
+- Does the same pool keep trading after the graduation milestone?
+- Can the locked liquidity position be withdrawn by an owner or admin?
+- Do creators earn a clear share of collected pool fees?
 - Does protocol revenue strengthen a fixed-supply platform token?
 
 ```mermaid
 flowchart LR
     C["Creator"] --> F["VyntraFactory.spawn"]
-    F --> T["Token + curve + splitter"]
-    TR["Traders"] --> X["Buy / sell on VyntraCurve"]
+    F --> T["Token + no-hook v4 pool + locked position"]
+    TR["Traders"] --> X["Buy / sell with HYPE"]
     X --> G{"Graduation threshold"}
-    G -->|reached| A["AMM venue · same liquidity"]
-    G -->|optional| B["BDEX migrate · LP locked"]
+    G -->|reached| A["Graduated · same v4 pool stays live"]
     X --> R["FeeRouter"]
     R --> V["BuybackVault"]
     V --> Burn["Buy $VYNTRA → burn"]
@@ -67,79 +66,63 @@ flowchart LR
 ## ⬡ How a launch works
 
 ```text
-Creator uploads image + metadata (+ optional tax)
+Creator uploads image + metadata and chooses a 5–100 HYPE seed
         │
         ▼
  VyntraFactory.spawn()
   · mints VyntraToken (1B fixed)
-  · deploys VyntraRevenueSplitter
-  · deploys VyntraCurve
-  · 800M tokens for sale on the curve
+  · deploys VyntraCurve market adapter
+  · initializes a no-hook Uniswap v4 HYPE pool
+  · deposits all 1B tokens and the HYPE seed atomically
         │
         ▼
- Traders buy/sell with BOT
-  · 1.25% protocol fee
-  · optional creator tax → splitter
-  · anti-snipe on the first blocks
+ Traders buy/sell with HYPE
+  · 1% Uniswap v4 pool fee
+  · aggregate first-three-block buys capped at 2% of supply
         │
         ▼
- Real BOT raised ≥ graduation threshold
+ Net HYPE buys ≥ graduation threshold
         │
         ▼
- Graduated · AMM live
-  · same locked liquidity stays tradeable
-  · optional BDEX migration when a router is configured
+ Graduated · the same v4 pool stays open
+  · graduation does not move liquidity or change the trading venue
+  · the market contract has no liquidity-removal or position-transfer function
 ```
 
-### Bonding phase
+### Recognizable token addresses
 
-Each launch seeds a constant-product curve with virtual and real reserves. **800M** of the 1B supply sells through the curve. Progress is `realBotReserves / graduationThreshold`.
+The factory deploys every launch token with CREATE2 and requires the address to end in `7f7`. The launch page finds a matching salt before asking the wallet to sign, and the factory rejects any salt that would produce a different suffix.
+
+### Pool launch
+
+Each launch creates a no-hook Uniswap v4 pool paired with native HYPE. The full-range position is owned by the market adapter and is initialized in the same transaction as the token. The starting price follows the fixed token supply and selected HYPE seed; the factory enforces the 5–100 HYPE bounds and the launch form shows the required seed before signing.
 
 ### Graduation
 
-When raised BOT hits the threshold, the curve marks graduated. Liquidity stays in the venue. Traders keep using the same market; the UI labels the venue as AMM.
+When net HYPE buys reach the configured threshold, the market marks graduated. Trading continues in that same pool; there is no curve-to-pool migration.
 
 ### Launch requirements
 
 - Image (upload or URL) and description — empty values revert on-chain
 - Unique name and unique symbol (case-insensitive)
-- Optional creator tax: off, or 1–10% buy/sell with a 4-way split totaling 100%
-- Wallet on BOT Chain with gas
+- Initial locked liquidity: 5–100 HYPE
+- Wallet on Elysium Testnet with gas
 
 ---
 
 ## ◎ Fee model
 
-Every buy and sell pays **1.25%** in BOT:
+Every swap pays the pool's fixed **1% Uniswap v4 fee**. Uniswap v4 accrues fees to the locked position. When collected:
 
 ```text
-1.25% trade fee
- ├── 50%  → creator (claimable)
- ├── 10%  → referrer, when set on the buy
- └── ~40% → protocol treasury (VyntraFeeRouter)
-              ├── 80% → VyntraBuybackVault → buy VYNTRA → burn
-              └── 20% → ops treasury
+HYPE-denominated LP fees
+ ├── 50% → creator (claimable)
+ └── 50% → protocol treasury (VyntraFeeRouter)
+             ├── 80% → VyntraBuybackVault → buy VYNTRA → burn
+             └── 20% → ops treasury
 ```
 
-After the protocol fee, an optional **creator tax** (0 or 1–10% buy/sell) can route to `VyntraRevenueSplitter`:
-
-```text
-creator tax BOT
- ├── funds       → claimFunds
- ├── buyback     → buyAndBurnMeme
- ├── dividends   → claimDividends
- └── liquidity   → injectLiquidity
-```
-
-Default preset when tax is enabled: **5% / 5%** buy/sell with a **40 / 20 / 20 / 20** split.
-
-Worked example on **1 BOT** of volume (protocol fee only):
-
-| Slice | Amount | Recipient |
-| --- | --- | --- |
-| Creator | 0.00625 BOT | Token creator |
-| Referrer | 0.00125 BOT | Optional |
-| Protocol | 0.005 BOT | 0.004 buyback + 0.001 ops |
+Token-denominated LP fees are sent to the creator when the position fees are collected. Launches have no creator transfer tax.
 
 ---
 
@@ -152,9 +135,11 @@ Worked example on **1 BOT** of volume (protocol fee only):
 | Supply | **1,000,000,000** fixed |
 | Role | Buyback sink for protocol revenue |
 
-Deploy seeds a BOT/VYNTRA market. As meme volume grows, protocol fees push BOT into that market, buy VYNTRA, and send it to the burn address.
+Deploy seeds a HYPE/VYNTRA market. As meme volume grows, protocol fees push HYPE into that market, buy VYNTRA, and send it to the burn address.
 
-**Flywheel:** more launches and volume → more protocol BOT → more VYNTRA burned → scarcer float.
+The deployment seeds 50 million VYNTRA (5%) into the market and places the remaining 950 million in a policy vault: 190M community and creator incentives, 142.5M ecosystem grants, and 617.5M unallocated. The treasury Safe proposes reserve actions through a 30-day timelock. Disclosed campaigns share a 50M VYNTRA rolling 365-day release cap; unclaimed tokens return to their original budget without restoring cap capacity. Protocol buybacks are limited to 0.5% of market HYPE reserves per transaction and at least six hours apart. Creators can also spend VYNTRA on labeled featured placement; those fees are sent to the burn address.
+
+**Intended flywheel:** more launches and volume can create more protocol revenue, paced buybacks, and token burns. This depends on actual usage; it does not guarantee token demand or price appreciation.
 
 ---
 
@@ -162,10 +147,10 @@ Deploy seeds a BOT/VYNTRA market. As meme volume grows, protocol fees push BOT i
 
 | Surface | What you get |
 | --- | --- |
-| Markets | Live feed with bonding progress and graduation state |
-| Launch | Image upload, metadata, uniqueness checks, optional tax |
+| Markets | Live feed with pool progress, graduation state, and labeled featured placements |
+| Launch | Image upload, metadata, uniqueness checks, 5–100 HYPE seed |
 | Token | Chart, buy/sell, trade tape, holders, snipers, replies, share |
-| Studio | Creator launches, fee claims, tax bucket actions, keeper sweep |
+| Studio | Creator launches, pool-fee claims, keeper sweep |
 | Portfolio | Wallet positions, average-cost PnL, trade history |
 | Indexer | Launches, trades, OHLCV, holders, snipers, portfolio API |
 
@@ -175,22 +160,32 @@ Deploy seeds a BOT/VYNTRA market. As meme volume grows, protocol fees push BOT i
 
 | Contract | Role |
 | --- | --- |
-| `VyntraFactory` | Creates token, splitter, and curve; enforces metadata and uniqueness |
+| `VyntraFactory` | Enforces metadata, uniqueness, seed bounds, and vanity suffix; coordinates atomic launches |
+| `VyntraMarketDeployer` | Factory-bound helper that deploys launch market adapters to keep factory bytecode deployable |
 | `VyntraToken` | Fixed-supply ERC-20 with image and description |
-| `VyntraCurve` | Buy/sell, fees, tax, anti-snipe, graduation, optional BDEX migrate |
-| `VyntraRevenueSplitter` | Per-launch tax → funds / buyback / dividends / liquidity |
+| `PoolManager` | Vyntra-owned deployment of Uniswap v4 core with protocol-fee governance renounced |
+| `VyntraCurve` | No-hook v4 swaps, fee collection, early-buy cap, graduation status, permanent position custody |
 | `VYNTRA` | Platform ERC-20 |
-| `VyntraMarket` | BOT/VYNTRA pool for buybacks |
+| `VyntraMarket` | No-hook v4 HYPE/VYNTRA pool with locked seed liquidity |
+| `VyntraReserveTimelock` | 30-day public delay; sole proposer is the treasury Safe |
+| `VyntraReserveVault` | Holds the 950M reserve, tracks allocations, and enforces campaign release limits |
+| `VyntraPromotion` | Creator-paid featured placement, with VYNTRA sent to burn address |
 | `VyntraFeeRouter` | 80% vault / 20% ops |
-| `VyntraBuybackVault` | Permissionless buy-and-burn |
+| `VyntraBuybackVault` | Capped, rate-limited buy-and-burn |
 | `VyntraKeeper` | Batched claim → distribute → buyback helpers |
 | `VyntraBoard` | On-chain replies per launch |
 
 Fairness defaults:
 
-- No bonding-curve team allocation on the meme
-- Launch-block creator-only buys; next three blocks capped at 2% supply per buy
-- Bonding inventory stays locked in the curve / AMM
+- No team allocation; the 950M reserve starts in a policy vault split 20% incentives, 15% grants, and 65% unallocated
+- Reserve campaigns require public disclosure, a 30-day timelock, and share a 50M VYNTRA rolling 365-day cap
+- Pool initialization and seeding happen atomically; there is no public uninitialized-pool window
+- The first three blocks have a global 2% supply buy cap, not a per-wallet allowance
+- The market adapter has no function that can reduce or transfer its liquidity position
+- Other users may add and withdraw separate positions from the public v4 pool; only Vyntra's seed position is locked
+- No custom hook is installed; graduation never triggers a migration
+- The 5 HYPE minimum seed improves launch depth, but later trades can still move price or reduce one side of pool inventory
+- External positions may change initialized ticks, making app quotes approximate; minimum-output limits protect each submitted trade
 - Duplicate names and tickers revert
 
 ---
@@ -199,8 +194,7 @@ Fairness defaults:
 
 | Network | Chain ID | Explorer |
 | --- | --- | --- |
-| BOT testnet | 968 | [scan.bohr.life](https://scan.bohr.life) |
-| BOT mainnet | 677 | [scan.botchain.ai](https://scan.botchain.ai) |
+| Elysium Testnet | 99801 | [Elysium Testnet Explorer](https://explorer-elysium-testnet.t.conduit.xyz) |
 
 ---
 
@@ -225,13 +219,14 @@ Vyntra/
 
 - Node.js 20 or newer (nvm recommended)
 - Foundry
-- BOT Chain RPC access
+- Elysium Testnet RPC access
 
 ### Contracts
 
 ```bash
 forge install
-forge test
+forge install Uniswap/v4-core@v1.0.2
+forge build --skip test
 ```
 
 ### Frontend
@@ -279,7 +274,8 @@ cd ../indexer && npm run typecheck
 | Read this | Use it for |
 | --- | --- |
 | [`docs/ECONOMICS.md`](docs/ECONOMICS.md) | Fee splits, `$VYNTRA` flywheel, launch rules |
-| [`docs/DEPLOY.md`](docs/DEPLOY.md) | Broadcast order, seeds, env cutover |
+| [`VYNTRA_TOKENOMICS.md`](VYNTRA_TOKENOMICS.md) | Supply allocation, reserve control, buyback limits, and platform-token utility |
+| [`ELYSIUM_TESTNET_DEPLOYMENT.md`](ELYSIUM_TESTNET_DEPLOYMENT.md) | Testnet deployment, pool design, launch protections |
 | [`SECURITY.md`](SECURITY.md) | Threat model and hardening checklist |
 | [`indexer/README.md`](indexer/README.md) | Indexer API and local run |
 
@@ -303,6 +299,6 @@ MIT
 
 **Fair launches · Locked venues · `$VYNTRA` burn**
 
-<sub>Permissionless memecoin launches on BOT Chain.</sub>
+<sub>Permissionless memecoin launches on Elysium Testnet.</sub>
 
 </div>

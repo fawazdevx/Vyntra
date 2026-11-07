@@ -2,21 +2,39 @@
 pragma solidity ^0.8.24;
 
 import {VyntraToken} from "./VyntraToken.sol";
-import {VyntraCurve} from "./VyntraCurve.sol";
-import {VyntraRevenueSplitter} from "./VyntraRevenueSplitter.sol";
+
+interface IVyntraMarketDeployer {
+    function deployMarket(
+        address token,
+        address creator,
+        address protocolTreasury,
+        uint256 graduationThreshold,
+        uint256 totalSupply,
+        address splitter,
+        address poolManager,
+        uint256 minInitialLiquidity,
+        uint256 maxInitialLiquidity
+    ) external returns (address market);
+}
+
+interface IVyntraLaunchMarket {
+    function initializePool() external payable;
+}
 
 /// @title VyntraFactory
-/// @notice Deploys VyntraToken + VyntraRevenueSplitter + VyntraCurve pairs for fair meme launches.
+/// @notice Coordinates fixed-supply launches into Vyntra's no-hook Uniswap v4 markets.
 contract VyntraFactory {
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 ether;
-    uint256 public constant REAL_TOKEN_RESERVES = 800_000_000 ether;
-    uint256 public constant VIRTUAL_BOT_RESERVES = 30 ether;
-    uint256 public constant VIRTUAL_TOKEN_RESERVES = 1_073_000_000 ether;
+    uint256 public constant MIN_LAUNCH_LIQUIDITY = 5 ether;
+    uint256 public constant MAX_LAUNCH_LIQUIDITY = 100 ether;
+    uint160 public constant VANITY_SUFFIX = 0x7f7;
 
     address public owner;
     address public protocolTreasury;
-    /// @dev BDEX V2 Router02. address(0) keeps post-grad trading on the internal AMM.
-    address public bdexRouter;
+    address public immutable poolManager;
+    address public immutable marketDeployer;
+    /// @dev Retained as a zero-valued compatibility getter. Vyntra markets do not migrate.
+    address public uniswapV2Router;
     uint256 public graduationThreshold;
     uint256 public launchCount;
 
@@ -50,7 +68,7 @@ contract VyntraFactory {
     );
     event TreasuryUpdated(address treasury);
     event ThresholdUpdated(uint256 threshold);
-    event BdexRouterUpdated(address router);
+    event UniswapRouterUpdated(address router);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
 
     error NotOwner();
@@ -61,23 +79,42 @@ contract VyntraFactory {
     error NameTaken();
     error SymbolTaken();
     error ZeroAddress();
+    error BadVanitySalt();
+    error VanitySaltNotFound();
+    error TaxesDisabled();
+    error MigrationDisabled();
+    error BadInitialLiquidity();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
         _;
     }
 
-    constructor(address protocolTreasury_, uint256 graduationThreshold_, address bdexRouter_) {
-        if (protocolTreasury_ == address(0)) revert ZeroAddress();
+    constructor(
+        address protocolTreasury_,
+        uint256 graduationThreshold_,
+        address poolManager_,
+        address marketDeployer_
+    ) {
+        if (
+            protocolTreasury_ == address(0) || poolManager_ == address(0)
+                || poolManager_.code.length == 0 || marketDeployer_ == address(0)
+                || marketDeployer_.code.length == 0
+        ) {
+            revert ZeroAddress();
+        }
         owner = msg.sender;
         protocolTreasury = protocolTreasury_;
         graduationThreshold = graduationThreshold_;
-        bdexRouter = bdexRouter_; // address(0) disables BDEX migrate for launches
+        poolManager = poolManager_;
+        marketDeployer = marketDeployer_;
     }
 
-    /// @notice Launch a new meme token with optional Argus tax config. Optionally buy in-tx (msg.value).
+    receive() external payable {}
+
+    /// @notice Launch a fixed-supply token directly into a locked Uniswap v4 HYPE pool.
     /// @dev Requires non-empty imageURI and description. Name/symbol must be unique (case-insensitive).
-    ///      Pass all tax/split BPS as 0 to disable meme tax.
+    ///      Legacy tax arguments must be zero; v4 pools use the fixed LP fee, with no custom hook.
     function spawn(
         string calldata name,
         string calldata symbol,
@@ -91,10 +128,78 @@ contract VyntraFactory {
         uint256 dividendsBps,
         uint256 liquidityBps
     ) external payable returns (address token, address curve) {
+        return _spawn(
+            name,
+            symbol,
+            imageURI,
+            description,
+            referrer,
+            buyTaxBps,
+            sellTaxBps,
+            fundsBps,
+            buybackBps,
+            dividendsBps,
+            liquidityBps,
+            bytes32(0)
+        );
+    }
+
+    function spawn(
+        string calldata name,
+        string calldata symbol,
+        string calldata imageURI,
+        string calldata description,
+        address referrer,
+        uint256 buyTaxBps,
+        uint256 sellTaxBps,
+        uint256 fundsBps,
+        uint256 buybackBps,
+        uint256 dividendsBps,
+        uint256 liquidityBps,
+        bytes32 tokenSalt
+    ) external payable returns (address token, address curve) {
+        return _spawn(
+            name,
+            symbol,
+            imageURI,
+            description,
+            referrer,
+            buyTaxBps,
+            sellTaxBps,
+            fundsBps,
+            buybackBps,
+            dividendsBps,
+            liquidityBps,
+            tokenSalt
+        );
+    }
+
+    function _spawn(
+        string calldata name,
+        string calldata symbol,
+        string calldata imageURI,
+        string calldata description,
+        address,
+        uint256 buyTaxBps,
+        uint256 sellTaxBps,
+        uint256 fundsBps,
+        uint256 buybackBps,
+        uint256 dividendsBps,
+        uint256 liquidityBps,
+        bytes32 tokenSalt
+    ) internal returns (address token, address curve) {
+        uint256 balanceBefore = address(this).balance - msg.value;
         if (!_hasText(name) || bytes(name).length > 32) revert BadName();
         if (!_hasText(symbol) || bytes(symbol).length > 10) revert BadSymbol();
         if (!_hasText(imageURI)) revert BadImage();
         if (!_hasText(description)) revert BadDescription();
+        if (
+            buyTaxBps != 0 || sellTaxBps != 0 || fundsBps != 0 || buybackBps != 0
+                || dividendsBps != 0 || liquidityBps != 0
+        ) revert TaxesDisabled();
+        if (msg.value < MIN_LAUNCH_LIQUIDITY || msg.value > MAX_LAUNCH_LIQUIDITY) {
+            revert BadInitialLiquidity();
+        }
 
         bytes32 nameKey = _nameKey(name);
         bytes32 symbolKey = _symbolKey(symbol);
@@ -103,41 +208,35 @@ contract VyntraFactory {
 
         address creator_ = msg.sender;
 
-        VyntraToken vyntraToken = new VyntraToken(
+        bytes32 initCodeHash = _tokenInitCodeHash(name, symbol, imageURI, description);
+        if (tokenSalt == bytes32(0)) {
+            (tokenSalt,) = _findVanitySalt(initCodeHash);
+        }
+        token = _predictCreate2(tokenSalt, initCodeHash);
+        if ((uint160(token) & 0xfff) != VANITY_SUFFIX) revert BadVanitySalt();
+
+        VyntraToken vyntraToken = new VyntraToken{salt: tokenSalt}(
             name, symbol, imageURI, description, address(this), TOTAL_SUPPLY
         );
         token = address(vyntraToken);
 
-        VyntraRevenueSplitter revenueSplitter = new VyntraRevenueSplitter(
-            token,
-            creator_,
-            buyTaxBps,
-            sellTaxBps,
-            fundsBps,
-            buybackBps,
-            dividendsBps,
-            liquidityBps
-        );
-        address splitter_ = address(revenueSplitter);
+        address splitter_ = address(0);
 
-        VyntraCurve bondingCurve = new VyntraCurve(
+        curve = IVyntraMarketDeployer(marketDeployer).deployMarket(
             token,
             creator_,
             protocolTreasury,
-            address(this),
-            VIRTUAL_BOT_RESERVES,
-            VIRTUAL_TOKEN_RESERVES,
-            REAL_TOKEN_RESERVES,
             graduationThreshold,
             TOTAL_SUPPLY,
             splitter_,
-            bdexRouter
+            poolManager,
+            MIN_LAUNCH_LIQUIDITY,
+            MAX_LAUNCH_LIQUIDITY
         );
-        curve = address(bondingCurve);
 
-        revenueSplitter.setCurve(curve);
         vyntraToken.setCurve(curve);
         require(vyntraToken.transfer(curve, TOTAL_SUPPLY), "SEED");
+        IVyntraLaunchMarket(curve).initializePool{value: msg.value}();
 
         uint256 id = ++launchCount;
         launches[id] = Launch(token, curve, creator_, splitter_, name, symbol, block.timestamp);
@@ -148,8 +247,10 @@ contract VyntraFactory {
 
         emit TokenSpawned(id, token, curve, creator_, splitter_, name, symbol, imageURI);
 
-        if (msg.value > 0) {
-            VyntraCurve(payable(curve)).buyFor{value: msg.value}(creator_, 0, referrer);
+        uint256 refund = address(this).balance - balanceBefore;
+        if (refund > 0) {
+            (bool sent,) = payable(creator_).call{value: refund}("");
+            require(sent, "SEED_REFUND");
         }
     }
 
@@ -159,6 +260,42 @@ contract VyntraFactory {
 
     function isSymbolTaken(string calldata symbol) external view returns (bool) {
         return symbolToId[_symbolKey(symbol)] != 0;
+    }
+
+    /// @notice Finds the first salt that makes the Vyntra token address end with 0x7f7.
+    /// @dev Call off-chain before spawn; searching does not add work to the launch transaction.
+    function findVanitySalt(
+        string calldata name,
+        string calldata symbol,
+        string calldata imageURI,
+        string calldata description
+    ) external view returns (bytes32 salt, address predictedToken) {
+        bytes32 initCodeHash = _tokenInitCodeHash(name, symbol, imageURI, description);
+        return _findVanitySalt(initCodeHash);
+    }
+
+    function _findVanitySalt(bytes32 initCodeHash)
+        private
+        view
+        returns (bytes32 salt, address predictedToken)
+    {
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(0x40, add(ptr, 0x60))
+            mstore8(ptr, 0xff)
+            mstore(add(ptr, 0x01), shl(96, address()))
+            mstore(add(ptr, 0x35), initCodeHash)
+            for { let i := 0 } lt(i, 0x10000) { i := add(i, 1) } {
+                mstore(add(ptr, 0x15), i)
+                let hash := keccak256(ptr, 0x55)
+                if eq(and(hash, 0xfff), 0x7f7) {
+                    salt := i
+                    predictedToken := and(hash, 0xffffffffffffffffffffffffffffffffffffffff)
+                    break
+                }
+            }
+        }
+        if (predictedToken == address(0)) revert VanitySaltNotFound();
     }
 
     function getLaunch(uint256 id) external view returns (Launch memory) {
@@ -180,11 +317,9 @@ contract VyntraFactory {
         emit ThresholdUpdated(threshold);
     }
 
-    /// @notice Updates BDEX router for *new* launches only (existing curves keep their immutable router).
-    /// @dev `router == address(0)` disables auto-migrate for subsequent launches (internal AMM remains).
-    function setBdexRouter(address router) external onlyOwner {
-        bdexRouter = router;
-        emit BdexRouterUpdated(router);
+    /// @notice Legacy selector kept for old integrations; liquidity migration is permanently disabled.
+    function setUniswapV2Router(address) external pure {
+        revert MigrationDisabled();
     }
 
     function transferOwnership(address newOwner) external onlyOwner {
@@ -232,5 +367,33 @@ contract VyntraFactory {
             }
         }
         return string(b);
+    }
+
+    function _tokenInitCodeHash(
+        string calldata name,
+        string calldata symbol,
+        string calldata imageURI,
+        string calldata description
+    ) private view returns (bytes32) {
+        return keccak256(
+            abi.encodePacked(
+                type(VyntraToken).creationCode,
+                abi.encode(name, symbol, imageURI, description, address(this), TOTAL_SUPPLY)
+            )
+        );
+    }
+
+    function _predictCreate2(bytes32 salt, bytes32 initCodeHash) private view returns (address predicted) {
+        bytes32 hash;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(0x40, add(ptr, 0x60))
+            mstore8(ptr, 0xff)
+            mstore(add(ptr, 0x01), shl(96, address()))
+            mstore(add(ptr, 0x15), salt)
+            mstore(add(ptr, 0x35), initCodeHash)
+            hash := keccak256(ptr, 0x55)
+        }
+        predicted = address(uint160(uint256(hash)));
     }
 }

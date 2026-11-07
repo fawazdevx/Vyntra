@@ -4,68 +4,97 @@ pragma solidity ^0.8.24;
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {VyntraToken} from "./VyntraToken.sol";
-import {VyntraRevenueSplitter} from "./VyntraRevenueSplitter.sol";
-import {IUniswapV2Router02, IUniswapV2Factory} from "./interfaces/IUniswapV2.sol";
+import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
+import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
+import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
+import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
+import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
+import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
+import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
+import {FixedPoint96} from "@uniswap/v4-core/src/libraries/FixedPoint96.sol";
+import {FullMath} from "@uniswap/v4-core/src/libraries/FullMath.sol";
+import {SqrtPriceMath} from "@uniswap/v4-core/src/libraries/SqrtPriceMath.sol";
+import {StateLibrary} from "@uniswap/v4-core/src/libraries/StateLibrary.sol";
+import {SwapMath} from "@uniswap/v4-core/src/libraries/SwapMath.sol";
+import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 /// @title VyntraCurve
-/// @notice Constant-product launch curve. Graduation is a status flag; trading stays on-curve
-///         (Uniswap V2-style) when a router is configured; LP is burned/locked.
-///         If no router is set, trading continues on this locked AMM.
-///         Optional Argus meme tax is taken after the 1.25% protocol fee and sent to the splitter.
-contract VyntraCurve is ReentrancyGuard {
-    uint256 public constant FEE_BPS = 125; // 1.25%
-    uint256 public constant BPS = 10_000;
-    uint256 public constant CREATOR_FEE_SHARE_BPS = 5_000; // 50% of fee
-    uint256 public constant REFERRER_FEE_SHARE_BPS = 1_000; // 10% of fee
+/// @notice Compatibility name for Vyntra's Uniswap v4 market and permanent liquidity lock.
+/// @dev The pool has no hook. This contract owns one full-range position and intentionally has
+///      no code path that can reduce or transfer its principal liquidity.
+contract VyntraCurve is ReentrancyGuard, IUnlockCallback {
+    using BalanceDeltaLibrary for BalanceDelta;
+    using PoolIdLibrary for PoolKey;
+    using StateLibrary for IPoolManager;
 
+    uint256 public constant FEE_BPS = 100; // 1% Uniswap v4 LP fee
+    uint256 public constant BPS = 10_000;
+    uint256 public constant CREATOR_FEE_SHARE_BPS = 5_000;
     uint256 public constant ANTI_SNIPE_BLOCKS = 3;
-    uint256 public constant MAX_BUY_BPS_ANTI_SNIPE = 200; // 2% of total supply
+    uint256 public constant MAX_BUY_BPS_ANTI_SNIPE = 200;
+    uint24 public constant POOL_FEE = 10_000; // fee units are hundredths of a bip
+    int24 public constant TICK_SPACING = 200;
     address public constant LP_BURN = 0x000000000000000000000000000000000000dEaD;
+
+    uint8 private constant OP_ADD_LIQUIDITY = 1;
+    uint8 private constant OP_BUY = 2;
+    uint8 private constant OP_SELL = 3;
+    uint8 private constant OP_COLLECT_FEES = 4;
 
     VyntraToken public immutable token;
     address public immutable creator;
     address public immutable protocolTreasury;
     address public immutable factory;
     address public immutable splitter;
-    /// @dev BDEX V2 Router02 (or address(0) to keep internal AMM after graduation).
-    address public immutable bdexRouter;
+    IPoolManager public immutable poolManager;
 
-    uint256 public immutable virtualBotReserves;
-    uint256 public immutable virtualTokenReserves;
-    uint256 public immutable realTokenReserves; // tokens sold during bonding phase
     uint256 public immutable graduationThreshold;
     uint256 public immutable launchBlock;
     uint256 public immutable totalSupply;
+    uint256 public immutable minInitialLiquidity;
+    uint256 public immutable maxInitialLiquidity;
 
-    uint256 public realBotReserves;
+    uint256 public realNativeReserves;
     uint256 public tokensSold;
+    uint256 public earlyTokensBought;
     bool public graduated;
-    bool public migrated;
-    address public externalPair;
+    bool public migrated; // retained for old clients; v4 pools never migrate
+    address public externalPair; // v4 pools live in PoolManager and have no pair address
 
     uint256 public creatorFees;
     uint256 public protocolFees;
     mapping(address => uint256) public referrerFees;
 
-    event Buy(
-        address indexed buyer,
-        address indexed referrer,
-        uint256 botIn,
-        uint256 tokensOut,
-        uint256 fee
-    );
-    event Sell(address indexed seller, uint256 tokensIn, uint256 botOut, uint256 fee);
+    bool public initialized;
+    bool private _unlockActive;
+    uint8 private _expectedOperation;
+    uint160 public initialSqrtPriceX96;
+    uint128 public initialLiquidity;
+    PoolId public poolId;
+
+    event Buy(address indexed buyer, address indexed referrer, uint256 nativeIn, uint256 tokensOut, uint256 fee);
+    event Sell(address indexed seller, uint256 tokensIn, uint256 nativeOut, uint256 fee);
     event TaxCollected(address indexed trader, bool isBuy, uint256 memeTax);
-    event Graduated(address indexed token, uint256 botLiquidity, uint256 tokenLiquidity);
-    event MigratedToBdex(
+    event Graduated(address indexed token, uint256 nativeLiquidity, uint256 tokenLiquidity);
+    event MigratedToUniswap(
         address indexed token,
         address indexed pair,
-        uint256 botAmount,
+        uint256 nativeAmount,
         uint256 tokenAmount,
         uint256 liquidity
     );
     event FeesClaimed(address indexed account, uint256 amount);
     event LiquidityInjected(uint256 amount);
+    event V4PoolInitialized(
+        address indexed token,
+        bytes32 indexed poolId,
+        uint160 sqrtPriceX96,
+        uint256 nativeSeed,
+        uint256 tokenSeed,
+        uint128 liquidity
+    );
+    event V4FeesCollected(uint256 creatorNative, uint256 protocolNative, uint256 creatorToken);
 
     error Slippage();
     error AntiSnipe();
@@ -77,136 +106,167 @@ contract VyntraCurve is ReentrancyGuard {
     error NoRouter();
     error AlreadyMigrated();
     error MigrateFailed();
-    error OnlySelf();
     error NothingToClaim();
     error BadConfig();
+    error NotFactory();
+    error NotPoolManager();
+    error AlreadyInitialized();
+    error BadInitialLiquidity();
+    error BadPoolDelta();
+    error MigrationDisabled();
 
     constructor(
         address token_,
         address creator_,
         address protocolTreasury_,
         address factory_,
-        uint256 virtualBotReserves_,
-        uint256 virtualTokenReserves_,
-        uint256 realTokenReserves_,
         uint256 graduationThreshold_,
         uint256 totalSupply_,
         address splitter_,
-        address bdexRouter_
+        address poolManager_,
+        uint256 minInitialLiquidity_,
+        uint256 maxInitialLiquidity_
     ) {
         if (
             token_ == address(0) || creator_ == address(0) || protocolTreasury_ == address(0)
-                || factory_ == address(0) || splitter_ == address(0)
-        ) {
-            revert BadConfig();
-        }
+                || factory_ == address(0) || poolManager_ == address(0)
+                || poolManager_.code.length == 0 || minInitialLiquidity_ == 0
+                || maxInitialLiquidity_ < minInitialLiquidity_
+        ) revert BadConfig();
+
         token = VyntraToken(token_);
         creator = creator_;
         protocolTreasury = protocolTreasury_;
         factory = factory_;
         splitter = splitter_;
-        bdexRouter = bdexRouter_; // may be address(0) to disable BDEX migrate
-        virtualBotReserves = virtualBotReserves_;
-        virtualTokenReserves = virtualTokenReserves_;
-        realTokenReserves = realTokenReserves_;
+        poolManager = IPoolManager(poolManager_);
         graduationThreshold = graduationThreshold_;
         totalSupply = totalSupply_;
+        minInitialLiquidity = minInitialLiquidity_;
+        maxInitialLiquidity = maxInitialLiquidity_;
         launchBlock = block.number;
     }
 
-    receive() external payable {}
-
-    function buyTaxBps() public view returns (uint256) {
-        return VyntraRevenueSplitter(payable(splitter)).buyTaxBps();
+    receive() external payable {
+        if (msg.sender != address(poolManager)) revert NotPoolManager();
     }
 
-    function sellTaxBps() public view returns (uint256) {
-        return VyntraRevenueSplitter(payable(splitter)).sellTaxBps();
+    /// @notice Initializes the no-hook v4 pool and permanently locks the full-range position.
+    /// @dev Factory calls this inside the same transaction that deploys the token and market.
+    function initializePool() external payable nonReentrant {
+        if (msg.sender != factory) revert NotFactory();
+        if (initialized) revert AlreadyInitialized();
+        if (msg.value < minInitialLiquidity || msg.value > maxInitialLiquidity) revert BadInitialLiquidity();
+
+        initialized = true;
+        initialSqrtPriceX96 = _sqrtPriceForSeed(totalSupply, msg.value);
+        PoolKey memory key = _poolKey();
+        poolId = key.toId();
+
+        poolManager.initialize(key, initialSqrtPriceX96);
+        bytes memory result = _unlock(abi.encode(OP_ADD_LIQUIDITY, msg.value));
+        (uint256 nativeUsed, uint256 tokenUsed, uint128 liquidity) = abi.decode(result, (uint256, uint256, uint128));
+        initialLiquidity = liquidity;
+
+        uint256 tokenDust = token.balanceOf(address(this));
+        if (tokenDust > 0) require(token.transfer(LP_BURN, tokenDust), "BURN_DUST");
+
+        uint256 nativeDust = address(this).balance;
+        if (nativeDust > 0) {
+            (bool refunded,) = payable(factory).call{value: nativeDust}("");
+            require(refunded, "SEED_REFUND");
+        }
+
+        emit V4PoolInitialized(address(token), PoolId.unwrap(poolId), initialSqrtPriceX96, nativeUsed, tokenUsed, liquidity);
+        emit LiquidityInjected(nativeUsed);
     }
 
-    function getReserves() public view returns (uint256 botReserves, uint256 tokenReserves) {
-        botReserves = virtualBotReserves + realBotReserves;
-        tokenReserves = virtualTokenReserves - tokensSold;
+    function poolKey() external view returns (PoolKey memory) {
+        return _poolKey();
+    }
+
+    function buyTaxBps() external pure returns (uint256) {
+        return 0;
+    }
+
+    function sellTaxBps() external pure returns (uint256) {
+        return 0;
+    }
+
+    function getReserves() public view returns (uint256 nativeReserves, uint256 tokenReserves) {
+        if (!initialized) return (0, 0);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        uint128 liquidity = poolManager.getLiquidity(poolId);
+        if (sqrtPriceX96 == 0 || liquidity == 0) return (0, 0);
+        (int24 tickLower, int24 tickUpper) = _fullRangeTicks();
+        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(tickLower);
+        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(tickUpper);
+        nativeReserves = SqrtPriceMath.getAmount0Delta(sqrtPriceX96, sqrtUpper, liquidity, false);
+        tokenReserves = SqrtPriceMath.getAmount1Delta(sqrtLower, sqrtPriceX96, liquidity, false);
     }
 
     function getProgressBps() public view returns (uint256) {
+        if (graduated) return BPS;
         if (graduationThreshold == 0) return 0;
-        uint256 p = (realBotReserves * BPS) / graduationThreshold;
+        uint256 p = (realNativeReserves * BPS) / graduationThreshold;
         return p > BPS ? BPS : p;
     }
 
-    /// @notice "bonding" → "amm" (internal) → "bdex" after successful external migrate.
-    function tradeVenue() external view returns (string memory) {
-        if (migrated) return "bdex";
-        return graduated ? "amm" : "bonding";
+    /// @notice Graduation is a status milestone. Swaps continue against this same v4 pool forever.
+    function tradeVenue() external pure returns (string memory) {
+        return "uniswap-v4";
     }
 
-    /// @notice Returns tokensOut and protocolFee. Meme tax (if any) is applied after protocol fee
-    ///         so quoted tokensOut matches execution.
-    function quoteBuy(uint256 botIn) public view returns (uint256 tokensOut, uint256 fee) {
-        if (botIn == 0) return (0, 0);
-        fee = (botIn * FEE_BPS) / BPS;
-        uint256 afterProtocol = botIn - fee;
-        uint256 taxBps = buyTaxBps();
-        uint256 memeTax = taxBps > 0 ? (afterProtocol * taxBps) / BPS : 0;
-        uint256 botToPool = afterProtocol - memeTax;
+    function uniswapV2Router() external pure returns (address) {
+        return address(0);
+    }
 
-        (uint256 botR, uint256 tokR) = getReserves();
-        if (botR == 0 || tokR <= 1 || botToPool == 0) return (0, fee);
-
-        tokensOut = (botToPool * tokR) / (botR + botToPool);
-        // Never empty the virtual pool
-        if (tokensOut >= tokR) tokensOut = tokR - 1;
-
-        if (!graduated) {
-            uint256 remaining = realTokenReserves - tokensSold;
-            if (tokensOut > remaining) tokensOut = remaining;
+    function quoteBuy(uint256 nativeIn) public view returns (uint256 tokensOut, uint256 fee) {
+        if (!initialized || nativeIn == 0) return (0, 0);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        uint128 liquidity = poolManager.getLiquidity(poolId);
+        if (sqrtPriceX96 == 0 || liquidity == 0) return (0, 0);
+        (uint160 sqrtPriceLimitX96,) = _sqrtPriceLimits();
+        (, , tokensOut, fee) = SwapMath.computeSwapStep(
+            sqrtPriceX96, sqrtPriceLimitX96, liquidity, _negativeAmount(nativeIn), POOL_FEE
+        );
+        if (block.number < launchBlock + ANTI_SNIPE_BLOCKS) {
+            uint256 earlyBuyCap = (totalSupply * MAX_BUY_BPS_ANTI_SNIPE) / BPS;
+            if (earlyTokensBought >= earlyBuyCap || tokensOut > earlyBuyCap - earlyTokensBought) return (0, 0);
         }
     }
 
-    function quoteBuyDetailed(uint256 botIn)
-        public
+    function quoteBuyDetailed(uint256 nativeIn)
+        external
         view
         returns (uint256 tokensOut, uint256 protocolFee, uint256 memeTax)
     {
-        if (botIn == 0) return (0, 0, 0);
-        protocolFee = (botIn * FEE_BPS) / BPS;
-        uint256 afterProtocol = botIn - protocolFee;
-        uint256 taxBps = buyTaxBps();
-        memeTax = taxBps > 0 ? (afterProtocol * taxBps) / BPS : 0;
-        (tokensOut,) = quoteBuy(botIn);
+        (tokensOut, protocolFee) = quoteBuy(nativeIn);
+        memeTax = 0;
     }
 
-    function quoteSell(uint256 tokensIn) public view returns (uint256 botOut, uint256 fee) {
-        if (tokensIn == 0) return (0, 0);
-        (uint256 botR, uint256 tokR) = getReserves();
-        if (tokR == 0 || botR == 0) return (0, 0);
-
-        uint256 botGross = (tokensIn * botR) / (tokR + tokensIn);
-        if (botGross > realBotReserves) botGross = realBotReserves;
-        fee = (botGross * FEE_BPS) / BPS;
-        uint256 afterProtocol = botGross - fee;
-        uint256 taxBps = sellTaxBps();
-        uint256 memeTax = taxBps > 0 ? (afterProtocol * taxBps) / BPS : 0;
-        botOut = afterProtocol - memeTax;
+    function quoteSell(uint256 tokensIn) public view returns (uint256 nativeOut, uint256 fee) {
+        if (!initialized || tokensIn == 0) return (0, 0);
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        uint128 liquidity = poolManager.getLiquidity(poolId);
+        if (sqrtPriceX96 == 0 || liquidity == 0) return (0, 0);
+        (, uint160 sqrtPriceLimitX96) = _sqrtPriceLimits();
+        (, , nativeOut,) = SwapMath.computeSwapStep(
+            sqrtPriceX96, sqrtPriceLimitX96, liquidity, _negativeAmount(tokensIn), POOL_FEE
+        );
+        (, , uint256 grossNativeOut,) = SwapMath.computeSwapStep(
+            sqrtPriceX96, sqrtPriceLimitX96, liquidity, _negativeAmount(tokensIn), 0
+        );
+        fee = grossNativeOut > nativeOut ? grossNativeOut - nativeOut : 0;
     }
 
     function quoteSellDetailed(uint256 tokensIn)
-        public
+        external
         view
-        returns (uint256 botOut, uint256 protocolFee, uint256 memeTax)
+        returns (uint256 nativeOut, uint256 protocolFee, uint256 memeTax)
     {
-        if (tokensIn == 0) return (0, 0, 0);
-        (uint256 botR, uint256 tokR) = getReserves();
-        if (tokR == 0 || botR == 0) return (0, 0, 0);
-
-        uint256 botGross = (tokensIn * botR) / (tokR + tokensIn);
-        if (botGross > realBotReserves) botGross = realBotReserves;
-        protocolFee = (botGross * FEE_BPS) / BPS;
-        uint256 afterProtocol = botGross - protocolFee;
-        uint256 taxBps = sellTaxBps();
-        memeTax = taxBps > 0 ? (afterProtocol * taxBps) / BPS : 0;
-        botOut = afterProtocol - memeTax;
+        (nativeOut, protocolFee) = quoteSell(tokensIn);
+        memeTax = 0;
     }
 
     function buy(uint256 minTokensOut, address referrer)
@@ -232,198 +292,349 @@ contract VyntraCurve is ReentrancyGuard {
         internal
         returns (uint256 tokensOut)
     {
-        if (migrated) revert Migrated();
+        if (!initialized) revert InsufficientLiquidity();
         if (msg.value == 0) revert ZeroAmount();
 
-        uint256 protocolFee = (msg.value * FEE_BPS) / BPS;
-        uint256 afterProtocol = msg.value - protocolFee;
-        uint256 taxBps = buyTaxBps();
-        uint256 memeTax = taxBps > 0 ? (afterProtocol * taxBps) / BPS : 0;
-        uint256 botToPool = afterProtocol - memeTax;
-
-        (tokensOut,) = quoteBuy(msg.value);
+        bytes memory result = _unlock(abi.encode(OP_BUY, beneficiary, msg.value, minTokensOut));
+        uint256 nativeUsed;
+        uint256 fee;
+        (tokensOut, nativeUsed, fee) = abi.decode(result, (uint256, uint256, uint256));
         if (tokensOut < minTokensOut) revert Slippage();
-        if (tokensOut == 0) revert InsufficientLiquidity();
+        if (tokensOut == 0 || nativeUsed == 0) revert InsufficientLiquidity();
 
-        // Anti-snipe only during early bonding blocks
-        if (!graduated) {
-            _enforceAntiSnipe(beneficiary, tokensOut);
+        if (block.number < launchBlock + ANTI_SNIPE_BLOCKS) {
+            uint256 earlyBuyCap = (totalSupply * MAX_BUY_BPS_ANTI_SNIPE) / BPS;
+            if (earlyTokensBought + tokensOut > earlyBuyCap) revert AntiSnipe();
+            earlyTokensBought += tokensOut;
         }
 
-        _splitFees(protocolFee, referrer, beneficiary);
-
-        // Effects before interactions (tax splitter / token transfer / possible migrate).
+        realNativeReserves += nativeUsed;
         tokensSold += tokensOut;
-        realBotReserves += botToPool;
+        emit Buy(beneficiary, referrer, nativeUsed, tokensOut, fee);
+        if (!graduated && realNativeReserves >= graduationThreshold) _graduate();
 
-        if (memeTax > 0) {
-            VyntraRevenueSplitter(payable(splitter)).receiveTax{value: memeTax}();
-            emit TaxCollected(beneficiary, true, memeTax);
-        }
-
-        bool ok = token.transfer(beneficiary, tokensOut);
-        require(ok, "TRANSFER");
-
-        emit Buy(beneficiary, referrer, msg.value, tokensOut, protocolFee);
-
-        if (!graduated && realBotReserves >= graduationThreshold) {
-            _graduate();
+        uint256 refund = msg.value - nativeUsed;
+        if (refund > 0) {
+            (bool sent,) = payable(msg.sender).call{value: refund}("");
+            require(sent, "REFUND");
         }
     }
 
-    function sell(uint256 tokensIn, uint256 minBotOut) external nonReentrant returns (uint256 botOut) {
-        if (migrated) revert Migrated();
+    function sell(uint256 tokensIn, uint256 minNativeOut) external nonReentrant returns (uint256 nativeOut) {
+        if (!initialized) revert InsufficientLiquidity();
         if (tokensIn == 0) revert ZeroAmount();
+        require(token.transferFrom(msg.sender, address(this), tokensIn), "TRANSFER_FROM");
 
-        uint256 protocolFee;
-        uint256 memeTax;
-        (botOut, protocolFee, memeTax) = quoteSellDetailed(tokensIn);
-        if (botOut < minBotOut) revert Slippage();
-        if (botOut == 0) revert InsufficientLiquidity();
+        bytes memory result = _unlock(abi.encode(OP_SELL, msg.sender, tokensIn, minNativeOut));
+        uint256 tokenUsed;
+        uint256 fee;
+        (nativeOut, tokenUsed, fee) = abi.decode(result, (uint256, uint256, uint256));
+        if (nativeOut < minNativeOut) revert Slippage();
+        if (nativeOut == 0 || tokenUsed == 0) revert InsufficientLiquidity();
 
-        bool ok = token.transferFrom(msg.sender, address(this), tokensIn);
-        require(ok, "TRANSFER_FROM");
+        uint256 tokenRefund = tokensIn - tokenUsed;
+        if (tokenRefund > 0) require(token.transfer(msg.sender, tokenRefund), "TOKEN_REFUND");
+        tokensSold = tokenUsed >= tokensSold ? 0 : tokensSold - tokenUsed;
+        realNativeReserves = nativeOut >= realNativeReserves ? 0 : realNativeReserves - nativeOut;
+        emit Sell(msg.sender, tokenUsed, nativeOut, fee);
 
-        // Effects before tax / ETH send.
-        tokensSold -= tokensIn;
-        realBotReserves -= (botOut + protocolFee + memeTax);
-        _splitFees(protocolFee, address(0), msg.sender);
-
-        if (memeTax > 0) {
-            VyntraRevenueSplitter(payable(splitter)).receiveTax{value: memeTax}();
-            emit TaxCollected(msg.sender, false, memeTax);
-        }
-
-        (bool sent,) = payable(msg.sender).call{value: botOut}("");
-        require(sent, "BOT_SEND");
-
-        emit Sell(msg.sender, tokensIn, botOut, protocolFee);
+        (bool sent,) = payable(msg.sender).call{value: nativeOut}("");
+        require(sent, "NATIVE_SEND");
     }
 
-    /// @notice Splitter-only: add BOT to real reserves (liquidity tax bucket).
-    function injectBotLiquidity() external payable nonReentrant {
-        if (migrated) revert Migrated();
-        if (msg.sender != splitter) revert NotSplitter();
-        if (msg.value == 0) revert ZeroAmount();
-        realBotReserves += msg.value;
-        emit LiquidityInjected(msg.value);
-    }
-
-    /// @notice Permissionless: migrate graduated curve liquidity to BDEX V2 and lock LP.
-    /// @dev Optional. Closes curve buy/sell. Prefer leaving liquidity on Vyntra; users import the token on BDEX (mainnet) if they want an external market.
-    function migrateToBdex() external nonReentrant {
-        if (!graduated) revert NotGraduated();
-        if (migrated) revert AlreadyMigrated();
-        if (bdexRouter == address(0)) revert NoRouter();
-        _migrateToBdex();
-        if (!migrated) revert MigrateFailed();
-    }
-
+    /// @notice Collects only fees from the locked position; principal cannot be withdrawn.
     function claimCreatorFees() external nonReentrant {
+        if (msg.sender != creator) revert BadConfig();
+        _collectFees();
         uint256 amount = creatorFees;
-        if (amount == 0) revert NothingToClaim();
+        if (amount == 0) return;
         creatorFees = 0;
         (bool sent,) = payable(creator).call{value: amount}("");
-        require(sent, "SEND");
+        require(sent, "CREATOR_SEND");
         emit FeesClaimed(creator, amount);
     }
 
+    /// @notice Permissionless protocol fee collection for the buyback / ops fee router.
     function claimProtocolFees() external nonReentrant {
+        _collectFees();
         uint256 amount = protocolFees;
-        if (amount == 0) revert NothingToClaim();
+        if (amount == 0) return;
         protocolFees = 0;
         (bool sent,) = payable(protocolTreasury).call{value: amount}("");
-        require(sent, "SEND");
+        require(sent, "PROTOCOL_SEND");
         emit FeesClaimed(protocolTreasury, amount);
     }
 
-    function claimReferrerFees(address referrer) external nonReentrant {
-        if (referrer == address(0)) revert NothingToClaim();
-        uint256 amount = referrerFees[referrer];
-        if (amount == 0) revert NothingToClaim();
-        referrerFees[referrer] = 0;
-        (bool sent,) = payable(referrer).call{value: amount}("");
-        require(sent, "SEND");
-        emit FeesClaimed(referrer, amount);
+    function claimReferrerFees(address) external pure {
+        revert NothingToClaim();
     }
 
-    function _enforceAntiSnipe(address beneficiary, uint256 tokensOut) internal view {
-        uint256 blocksSince = block.number - launchBlock;
-        if (blocksSince == 0) {
-            if (beneficiary != creator) revert AntiSnipe();
-            return;
-        }
-        if (blocksSince <= ANTI_SNIPE_BLOCKS) {
-            uint256 maxBuy = (totalSupply * MAX_BUY_BPS_ANTI_SNIPE) / BPS;
-            if (tokensOut > maxBuy) revert AntiSnipe();
-        }
+    function injectNativeLiquidity() external payable {
+        revert MigrationDisabled();
     }
 
-    function _splitFees(uint256 fee, address referrer, address trader) internal {
-        if (fee == 0) return;
-        uint256 creatorCut = (fee * CREATOR_FEE_SHARE_BPS) / BPS;
-        uint256 referrerCut;
-        if (referrer != address(0) && referrer != trader && referrer != creator) {
-            referrerCut = (fee * REFERRER_FEE_SHARE_BPS) / BPS;
-            referrerFees[referrer] += referrerCut;
-        }
-        uint256 protocolCut = fee - creatorCut - referrerCut;
-        creatorFees += creatorCut;
-        protocolFees += protocolCut;
+    function migrateToUniswap() external pure {
+        revert MigrationDisabled();
     }
 
-    /// @dev Graduation milestone only. Trading stays on this curve (Argus-style).
-    ///      Optional `migrateToBdex()` remains permissionless for mainnet LP lockouts — it closes the curve.
-    function _graduate() internal {
-        if (graduated) return;
-        graduated = true;
-        uint256 tokenLiquidity = totalSupply - tokensSold;
-        emit Graduated(address(token), realBotReserves, tokenLiquidity);
-    }
-
-    /// @dev External wrapper so `_graduate` can try/catch migration without bubbling reverts.
-    function migrateToBdexExternal() external {
-        if (msg.sender != address(this)) revert OnlySelf();
-        if (!graduated || migrated || bdexRouter == address(0)) return;
-        _migrateToBdex();
-    }
-
-    function _migrateToBdex() internal {
-        uint256 botAmount = realBotReserves;
-        uint256 tokenAmount = token.balanceOf(address(this));
-        if (botAmount == 0 || tokenAmount == 0) revert InsufficientLiquidity();
-        // Fee accruals stay on the contract; only pool BOT migrates.
-        if (address(this).balance < botAmount) revert InsufficientLiquidity();
-
-        IUniswapV2Router02 router = IUniswapV2Router02(bdexRouter);
-        address weth = router.WETH();
-
-        require(IERC20(address(token)).approve(bdexRouter, tokenAmount), "APPROVE");
-
-        (uint256 usedToken, uint256 usedBot, uint256 liquidity) = router.addLiquidityETH{value: botAmount}(
-            address(token),
-            tokenAmount,
-            0,
-            0,
-            LP_BURN,
-            block.timestamp
-        );
-
-        // Clear any leftover allowance so a compromised/future router cannot pull residual tokens.
-        require(IERC20(address(token)).approve(bdexRouter, 0), "APPROVE_CLEAR");
-
-        address pair = IUniswapV2Factory(router.factory()).getPair(address(token), weth);
-        if (pair == address(0)) revert MigrateFailed();
-
-        realBotReserves = 0;
-        migrated = true;
-        externalPair = pair;
-
-        emit MigratedToBdex(address(token), pair, usedBot, usedToken, liquidity);
-    }
-
-    /// @notice ETH held for fee claims (not part of the tradable pool).
     function accruedFees() public view returns (uint256) {
         return creatorFees + protocolFees;
+    }
+
+    /// @inheritdoc IUnlockCallback
+    function unlockCallback(bytes calldata data) external returns (bytes memory result) {
+        if (msg.sender != address(poolManager)) revert NotPoolManager();
+        uint8 operation = abi.decode(data, (uint8));
+        if (!_unlockActive || operation != _expectedOperation) revert BadConfig();
+        PoolKey memory key = _poolKey();
+
+        if (operation == OP_ADD_LIQUIDITY) {
+            (, uint256 nativeSeed) = abi.decode(data, (uint8, uint256));
+            return _addInitialLiquidity(key, nativeSeed);
+        }
+        if (operation == OP_BUY) {
+            (, address buyer, uint256 nativeIn, uint256 minTokensOut) =
+                abi.decode(data, (uint8, address, uint256, uint256));
+            return _swapBuy(key, buyer, nativeIn, minTokensOut);
+        }
+        if (operation == OP_SELL) {
+            (, address seller, uint256 tokensIn, uint256 minNativeOut) =
+                abi.decode(data, (uint8, address, uint256, uint256));
+            return _swapSell(key, seller, tokensIn, minNativeOut);
+        }
+        if (operation == OP_COLLECT_FEES) {
+            return _collectPositionFees(key);
+        }
+        revert BadConfig();
+    }
+
+    function _addInitialLiquidity(PoolKey memory key, uint256 nativeSeed) private returns (bytes memory) {
+        (int24 tickLower, int24 tickUpper) = _fullRangeTicks();
+        uint160 sqrtLower = TickMath.getSqrtPriceAtTick(tickLower);
+        uint160 sqrtUpper = TickMath.getSqrtPriceAtTick(tickUpper);
+        uint256 liquidity0 = _liquidityForAmount0(initialSqrtPriceX96, sqrtUpper, nativeSeed);
+        uint256 liquidity1 = _liquidityForAmount1(sqrtLower, initialSqrtPriceX96, totalSupply);
+        uint256 liquidity = liquidity0 < liquidity1 ? liquidity0 : liquidity1;
+        if (liquidity == 0 || liquidity > type(uint128).max) revert InsufficientLiquidity();
+
+        uint128 liquidityAmount = uint128(liquidity);
+        for (uint256 i; i < 4; ++i) {
+            uint256 nativeRequired = SqrtPriceMath.getAmount0Delta(
+                initialSqrtPriceX96, sqrtUpper, liquidityAmount, true
+            );
+            uint256 tokenRequired = SqrtPriceMath.getAmount1Delta(
+                sqrtLower, initialSqrtPriceX96, liquidityAmount, true
+            );
+            if (nativeRequired <= nativeSeed && tokenRequired <= totalSupply) break;
+            if (liquidityAmount <= 1) revert BadInitialLiquidity();
+            unchecked {
+                --liquidityAmount;
+            }
+        }
+        if (
+            SqrtPriceMath.getAmount0Delta(initialSqrtPriceX96, sqrtUpper, liquidityAmount, true) > nativeSeed
+                || SqrtPriceMath.getAmount1Delta(sqrtLower, initialSqrtPriceX96, liquidityAmount, true) > totalSupply
+        ) revert BadInitialLiquidity();
+
+        (BalanceDelta delta,) = poolManager.modifyLiquidity(
+            key,
+            ModifyLiquidityParams({
+                tickLower: tickLower,
+                tickUpper: tickUpper,
+                liquidityDelta: int256(uint256(liquidityAmount)),
+                salt: bytes32(0)
+            }),
+            ""
+        );
+        int128 delta0 = delta.amount0();
+        int128 delta1 = delta.amount1();
+        if (delta0 < 0 || delta1 < 0) revert BadPoolDelta();
+        uint256 nativeDue = uint256(uint128(delta0));
+        uint256 tokenDue = uint256(uint128(delta1));
+        if (nativeDue > nativeSeed || tokenDue > totalSupply) revert BadInitialLiquidity();
+
+        poolManager.sync(key.currency0);
+        poolManager.settle{value: nativeDue}();
+        poolManager.sync(key.currency1);
+        require(token.transfer(address(poolManager), tokenDue), "LP_TOKEN");
+        poolManager.settle();
+
+        return abi.encode(nativeDue, tokenDue, liquidityAmount);
+    }
+
+    function _swapBuy(PoolKey memory key, address buyer, uint256 nativeIn, uint256 minTokensOut)
+        private
+        returns (bytes memory)
+    {
+        (uint160 sqrtBefore,,,) = poolManager.getSlot0(poolId);
+        uint128 liquidity = poolManager.getLiquidity(poolId);
+        if (liquidity == 0) revert InsufficientLiquidity();
+        (uint160 sqrtPriceLimitX96,) = _sqrtPriceLimits();
+        (,,, uint256 fee) = SwapMath.computeSwapStep(
+            sqrtBefore, sqrtPriceLimitX96, liquidity, _negativeAmount(nativeIn), POOL_FEE
+        );
+        BalanceDelta delta = poolManager.swap(
+            key,
+            SwapParams({
+                zeroForOne: true,
+                amountSpecified: _negativeAmount(nativeIn),
+                sqrtPriceLimitX96: sqrtPriceLimitX96
+            }),
+            ""
+        );
+        int128 delta0 = delta.amount0();
+        int128 delta1 = delta.amount1();
+        if (delta0 < 0 || delta1 > 0) revert BadPoolDelta();
+        uint256 nativeUsed = uint256(uint128(delta0));
+        uint256 tokensOut = uint256(uint128(-delta1));
+        if (tokensOut < minTokensOut) revert Slippage();
+
+        poolManager.sync(key.currency0);
+        poolManager.settle{value: nativeUsed}();
+        poolManager.take(key.currency1, buyer, tokensOut);
+        return abi.encode(tokensOut, nativeUsed, fee);
+    }
+
+    function _swapSell(PoolKey memory key, address seller, uint256 tokensIn, uint256 minNativeOut)
+        private
+        returns (bytes memory)
+    {
+        (uint160 sqrtBefore,,,) = poolManager.getSlot0(poolId);
+        uint128 liquidity = poolManager.getLiquidity(poolId);
+        if (liquidity == 0) revert InsufficientLiquidity();
+        if (seller == address(0)) revert BadConfig();
+        (, uint160 sqrtPriceLimitX96) = _sqrtPriceLimits();
+        (, , uint256 grossNativeOut,) = SwapMath.computeSwapStep(
+            sqrtBefore, sqrtPriceLimitX96, liquidity, _negativeAmount(tokensIn), 0
+        );
+
+        BalanceDelta delta = poolManager.swap(
+            key,
+            SwapParams({
+                zeroForOne: false,
+                amountSpecified: _negativeAmount(tokensIn),
+                sqrtPriceLimitX96: sqrtPriceLimitX96
+            }),
+            ""
+        );
+        int128 delta0 = delta.amount0();
+        int128 delta1 = delta.amount1();
+        if (delta0 > 0 || delta1 < 0) revert BadPoolDelta();
+        uint256 nativeOut = uint256(uint128(-delta0));
+        uint256 tokensUsed = uint256(uint128(delta1));
+        if (nativeOut < minNativeOut) revert Slippage();
+
+        poolManager.sync(key.currency1);
+        require(token.transfer(address(poolManager), tokensUsed), "SWAP_TOKEN");
+        poolManager.settle();
+        poolManager.take(key.currency0, address(this), nativeOut);
+        uint256 feeNative = grossNativeOut > nativeOut ? grossNativeOut - nativeOut : 0;
+        return abi.encode(nativeOut, tokensUsed, feeNative);
+    }
+
+    function _collectFees() private {
+        bytes memory result = _unlock(abi.encode(OP_COLLECT_FEES));
+        (uint256 nativeFees, uint256 tokenFees) = abi.decode(result, (uint256, uint256));
+        uint256 creatorCut = (nativeFees * CREATOR_FEE_SHARE_BPS) / BPS;
+        uint256 protocolCut = nativeFees - creatorCut;
+        creatorFees += creatorCut;
+        protocolFees += protocolCut;
+        if (tokenFees > 0) require(token.transfer(creator, tokenFees), "TOKEN_FEE_SEND");
+        emit V4FeesCollected(creatorCut, protocolCut, tokenFees);
+    }
+
+    function _collectPositionFees(PoolKey memory key) private returns (bytes memory) {
+        (int24 tickLower, int24 tickUpper) = _fullRangeTicks();
+        (BalanceDelta delta,) = poolManager.modifyLiquidity(
+            key,
+            ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: 0, salt: bytes32(0)}),
+            ""
+        );
+        int128 delta0 = delta.amount0();
+        int128 delta1 = delta.amount1();
+        if (delta0 < 0 || delta1 < 0) revert BadPoolDelta();
+        uint256 nativeFees = uint256(uint128(delta0));
+        uint256 tokenFees = uint256(uint128(delta1));
+        if (nativeFees > 0) poolManager.take(key.currency0, address(this), nativeFees);
+        if (tokenFees > 0) poolManager.take(key.currency1, address(this), tokenFees);
+        return abi.encode(nativeFees, tokenFees);
+    }
+
+    function _graduate() private {
+        graduated = true;
+        (uint256 nativeLiquidity, uint256 tokenLiquidity) = getReserves();
+        emit Graduated(address(token), nativeLiquidity, tokenLiquidity);
+    }
+
+    function _poolKey() private view returns (PoolKey memory) {
+        return PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(token)),
+            fee: POOL_FEE,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(0))
+        });
+    }
+
+    function _unlock(bytes memory data) private returns (bytes memory result) {
+        if (_unlockActive) revert BadConfig();
+        _unlockActive = true;
+        _expectedOperation = abi.decode(data, (uint8));
+        result = poolManager.unlock(data);
+        _expectedOperation = 0;
+        _unlockActive = false;
+    }
+
+    function _sqrtPriceLimits() private pure returns (uint160 lower, uint160 upper) {
+        (int24 tickLower, int24 tickUpper) = _fullRangeTicks();
+        lower = TickMath.getSqrtPriceAtTick(tickLower) + 1;
+        upper = TickMath.getSqrtPriceAtTick(tickUpper) - 1;
+    }
+
+    function _negativeAmount(uint256 amount) private pure returns (int256) {
+        if (amount == 0 || amount > uint256(type(int256).max)) revert BadConfig();
+        return -int256(amount);
+    }
+
+    function _fullRangeTicks() private pure returns (int24 tickLower, int24 tickUpper) {
+        tickLower = TickMath.minUsableTick(TICK_SPACING);
+        tickUpper = TickMath.maxUsableTick(TICK_SPACING);
+    }
+
+    function _sqrtPriceForSeed(uint256 tokenAmount, uint256 nativeAmount) private pure returns (uint160) {
+        uint256 ratioX192 = FullMath.mulDiv(tokenAmount, uint256(1) << 192, nativeAmount);
+        uint256 root = _sqrt(ratioX192);
+        if (root <= TickMath.MIN_SQRT_PRICE || root >= TickMath.MAX_SQRT_PRICE || root > type(uint160).max) {
+            revert BadInitialLiquidity();
+        }
+        return uint160(root);
+    }
+
+    function _liquidityForAmount0(uint160 sqrtA, uint160 sqrtB, uint256 amount0)
+        private
+        pure
+        returns (uint256)
+    {
+        uint256 intermediate = FullMath.mulDiv(uint256(sqrtA), uint256(sqrtB), FixedPoint96.Q96);
+        return FullMath.mulDiv(amount0, intermediate, uint256(sqrtB) - sqrtA);
+    }
+
+    function _liquidityForAmount1(uint160 sqrtA, uint160 sqrtB, uint256 amount1)
+        private
+        pure
+        returns (uint256)
+    {
+        return FullMath.mulDiv(amount1, FixedPoint96.Q96, uint256(sqrtB) - sqrtA);
+    }
+
+    function _sqrt(uint256 value) private pure returns (uint256 result) {
+        if (value == 0) return 0;
+        uint256 x = value;
+        result = (x + 1) >> 1;
+        while (result < x) {
+            x = result;
+            result = (value / x + x) >> 1;
+        }
+        return x;
     }
 }

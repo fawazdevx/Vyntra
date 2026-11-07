@@ -20,8 +20,11 @@ export default function handler(req: Request) {
       process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN,
     ),
     chainId: Number(
-      process.env.INDEXER_CHAIN_ID || process.env.BOT_TESTNET_CHAIN_ID || 968,
+      process.env.INDEXER_CHAIN_ID || 99801,
     ),
-    rpc: process.env.INDEXER_RPC_URL || process.env.BOT_TESTNET_RPC_URL || null,
+    rpc:
+      process.env.INDEXER_RPC_URL ||
+      process.env.ELYSIUM_TESTNET_RPC_URL ||
+      'https://testnet-rpc.elysium.kinetiq.xyz',
   })
 }

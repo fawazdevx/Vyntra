@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { explorerAddress, formatBot, shortAddr } from '../lib/config'
+import { explorerAddress, formatNative, shortAddr } from '../lib/config'
 import { activeChain } from '../lib/chains'
 import {
   fetchHoldersFromIndexer,
@@ -10,7 +10,7 @@ import {
 } from '../lib/indexer'
 import { holdersFromTrades, snipersFromTrades } from '../lib/holdersFromTrades'
 import type { TradePoint } from '../hooks/useTradeHistory'
-import { BotUsd } from './BotUsd'
+import { HypeUsd } from './HypeUsd'
 
 type Props = {
   symbol: string
@@ -220,10 +220,10 @@ export function HoldersPanel({ launchId, symbol, trades }: Props) {
               <span>
                 Spent{' '}
                 <span className="font-mono text-[var(--vyntra-fg)]">
-                  {formatBot(sniperSummary.totalSpentBot)}
-                  <BotUsd value={sniperSummary.totalSpentBot} className="ml-1 inline text-[11px] font-normal text-[var(--vyntra-faint)]" />
+                  {formatNative(sniperSummary.totalSpentNative)}
+                  <HypeUsd value={sniperSummary.totalSpentNative} className="ml-1 inline text-[11px] font-normal text-[var(--vyntra-faint)]" />
                 </span>{' '}
-                BOT
+                HYPE
               </span>
               <span>
                 Hold{' '}
@@ -283,8 +283,8 @@ export function HoldersPanel({ launchId, symbol, trades }: Props) {
                         {pct(s.dumpBps / 100, 0)}
                       </td>
                       <td className="px-4 py-3 text-right font-mono sm:px-5">
-                        {formatBot(s.spentBot)}
-                        <BotUsd value={s.spentBot} />
+                        {formatNative(s.spentNative)}
+                        <HypeUsd value={s.spentNative} />
                       </td>
                     </tr>
                   ))}

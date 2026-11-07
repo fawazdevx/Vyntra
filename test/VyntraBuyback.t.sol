@@ -33,7 +33,7 @@ contract VyntraBuybackTest is Test {
         router = new VyntraFeeRouter(address(vault), ops);
         factory = new VyntraFactory(address(router), 1 ether, address(0));
 
-        // Seed VYNTRA/BOT market: 10M VYNTRA + 10 BOT
+        // Seed VYNTRA/HYPE market: 10M VYNTRA + 10 HYPE
         uint256 seedVyntra = 10_000_000 ether;
         vyntraToken.approve(address(market), seedVyntra);
         market.seed{value: 10 ether}(seedVyntra);

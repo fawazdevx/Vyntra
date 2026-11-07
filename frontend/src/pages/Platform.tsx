@@ -16,22 +16,25 @@ import { PriceChart } from '../components/PriceChart'
 import { TradeTape } from '../components/TradeTape'
 import { HoldersPanel } from '../components/HoldersPanel'
 import { ReplyThread } from '../components/ReplyThread'
-import { erc20Abi, vyntraMarketAbi } from '../lib/abis'
+import { erc20Abi, timelockAbi, vyntraMarketAbi, vyntraReserveVaultAbi } from '../lib/abis'
 import { activeChain } from '../lib/chains'
 import {
   BUYBACK_VAULT,
   explorerAddress,
   explorerTx,
-  formatBot,
+  formatNative,
   shortAddr,
   PLATFORM_REPLY_ID,
   VYNTRA_LOGO,
   VYNTRA_MARKET,
+  VYNTRA_RESERVE_TIMELOCK,
+  VYNTRA_RESERVE_VAULT,
   VYNTRA_TOKEN,
 } from '../lib/config'
 import { formatUserError } from '../lib/errors'
 import { usePlatformTrades } from '../hooks/usePlatformTrades'
-import { BotUsd } from '../components/BotUsd'
+import { HypeUsd } from '../components/HypeUsd'
+import { fetchReserveActivityFromIndexer, type ReserveActivity } from '../lib/indexer'
 
 const PCTS = [25, 50, 75, 100] as const
 const TOTAL_SUPPLY = 1_000_000_000
@@ -54,6 +57,18 @@ function fmtInput(wei: bigint, decimals = 6): string {
   return trimmed ? `${i}.${trimmed}` : i
 }
 
+function formatVyntraAmount(value: bigint | undefined): string {
+  if (value == null) return '—'
+  return Number(formatEther(value)).toLocaleString('en-US', { maximumFractionDigits: 0 })
+}
+
+function reserveBucketName(bucket: number | null): string {
+  if (bucket === 0) return 'Community & creator incentives'
+  if (bucket === 1) return 'Ecosystem grants'
+  if (bucket === 2) return 'Unallocated reserve'
+  return 'Reserve'
+}
+
 export function Platform() {
   const { address, isConnected } = useAccount()
   const chainId = useChainId()
@@ -62,6 +77,7 @@ export function Platform() {
   const [amount, setAmount] = useState('0.1')
   const [msg, setMsg] = useState<string | null>(null)
   const [copied, setCopied] = useState<string | null>(null)
+  const [reserveActivity, setReserveActivity] = useState<ReserveActivity[]>([])
 
   const configured = Boolean(VYNTRA_TOKEN && VYNTRA_MARKET)
   const onWrongChain = isConnected && chainId !== activeChain.id
@@ -73,7 +89,7 @@ export function Platform() {
     refetch: refetchTrades,
   } = usePlatformTrades(VYNTRA_MARKET)
 
-  const { data: botBalance } = useBalance({
+  const { data: nativeBalance } = useBalance({
     address,
     chainId: activeChain.id,
     query: { enabled: Boolean(address) },
@@ -95,11 +111,25 @@ export function Platform() {
     query: { enabled: Boolean(VYNTRA_TOKEN && VYNTRA_MARKET && address) },
   })
 
-  const { data: reserveBot } = useReadContract({
+  const { data: reserveNative } = useReadContract({
     address: VYNTRA_MARKET,
     abi: vyntraMarketAbi,
-    functionName: 'reserveBot',
+    functionName: 'reserveNative',
     query: { enabled: Boolean(VYNTRA_MARKET), refetchInterval: 8_000 },
+  })
+
+  const { data: poolManager } = useReadContract({
+    address: VYNTRA_MARKET,
+    abi: vyntraMarketAbi,
+    functionName: 'poolManager',
+    query: { enabled: Boolean(VYNTRA_MARKET) },
+  })
+
+  const { data: poolId } = useReadContract({
+    address: VYNTRA_MARKET,
+    abi: vyntraMarketAbi,
+    functionName: 'poolId',
+    query: { enabled: Boolean(VYNTRA_MARKET) },
   })
 
   const { data: reserveVyntra } = useReadContract({
@@ -108,6 +138,76 @@ export function Platform() {
     functionName: 'reserveVyntra',
     query: { enabled: Boolean(VYNTRA_MARKET), refetchInterval: 8_000 },
   })
+
+  const { data: reserveVaultBalance } = useReadContract({
+    address: VYNTRA_TOKEN,
+    abi: erc20Abi,
+    functionName: 'balanceOf',
+    args: VYNTRA_RESERVE_VAULT ? [VYNTRA_RESERVE_VAULT] : undefined,
+    query: {
+      enabled: Boolean(VYNTRA_TOKEN && VYNTRA_RESERVE_VAULT),
+      refetchInterval: 30_000,
+    },
+  })
+
+  const { data: communityBudget } = useReadContract({
+    address: VYNTRA_RESERVE_VAULT,
+    abi: vyntraReserveVaultAbi,
+    functionName: 'bucketBalance',
+    args: [0],
+    query: { enabled: Boolean(VYNTRA_RESERVE_VAULT), refetchInterval: 30_000 },
+  })
+
+  const { data: grantsBudget } = useReadContract({
+    address: VYNTRA_RESERVE_VAULT,
+    abi: vyntraReserveVaultAbi,
+    functionName: 'bucketBalance',
+    args: [1],
+    query: { enabled: Boolean(VYNTRA_RESERVE_VAULT), refetchInterval: 30_000 },
+  })
+
+  const { data: unallocatedBudget } = useReadContract({
+    address: VYNTRA_RESERVE_VAULT,
+    abi: vyntraReserveVaultAbi,
+    functionName: 'bucketBalance',
+    args: [2],
+    query: { enabled: Boolean(VYNTRA_RESERVE_VAULT), refetchInterval: 30_000 },
+  })
+
+  const { data: reserveOutflow } = useReadContract({
+    address: VYNTRA_RESERVE_VAULT,
+    abi: vyntraReserveVaultAbi,
+    functionName: 'rollingOutflow',
+    query: { enabled: Boolean(VYNTRA_RESERVE_VAULT), refetchInterval: 30_000 },
+  })
+
+  const { data: annualReleaseCap } = useReadContract({
+    address: VYNTRA_RESERVE_VAULT,
+    abi: vyntraReserveVaultAbi,
+    functionName: 'ANNUAL_RELEASE_CAP',
+    query: { enabled: Boolean(VYNTRA_RESERVE_VAULT) },
+  })
+
+  const { data: reserveDelay } = useReadContract({
+    address: VYNTRA_RESERVE_TIMELOCK,
+    abi: timelockAbi,
+    functionName: 'getMinDelay',
+    query: { enabled: Boolean(VYNTRA_RESERVE_TIMELOCK) },
+  })
+
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      const events = await fetchReserveActivityFromIndexer()
+      if (active && events) setReserveActivity(events)
+    }
+    void load()
+    const interval = window.setInterval(() => void load(), 30_000)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+    }
+  }, [])
 
   const parsedAmount = useMemo(() => safeParseEther(amount), [amount])
 
@@ -132,8 +232,8 @@ export function Platform() {
   })
 
   const price =
-    reserveBot != null && reserveVyntra != null && reserveVyntra > 0n
-      ? Number(formatEther(reserveBot)) / Number(formatEther(reserveVyntra))
+    reserveNative != null && reserveVyntra != null && reserveVyntra > 0n
+      ? Number(formatEther(reserveNative)) / Number(formatEther(reserveVyntra))
       : 0
   const spotMcap = price > 0 ? price * TOTAL_SUPPLY : trades.at(-1)?.mcap ?? 0
 
@@ -155,7 +255,7 @@ export function Platform() {
 
   function setPercent(pct: number) {
     if (side === 'buy') {
-      const bal = botBalance?.value ?? 0n
+      const bal = nativeBalance?.value ?? 0n
       setAmount(fmtInput((bal * BigInt(pct)) / 100n))
     } else {
       const bal = tokenBalance ?? 0n
@@ -171,7 +271,7 @@ export function Platform() {
       return
     }
     if (onWrongChain) {
-      setMsg('Switch to BOT Chain first.')
+      setMsg('Switch to Elysium Testnet first.')
       return
     }
     if (parsedAmount == null || parsedAmount <= 0n) {
@@ -307,18 +407,18 @@ export function Platform() {
         <div className="flex flex-wrap gap-7 sm:gap-10">
           <Metric
             label="Market cap / FDV"
-            value={`${formatBot(spotMcap)} BOT`}
-            sub={<BotUsd value={spotMcap} />}
+            value={`${formatNative(spotMcap)} HYPE`}
+            sub={<HypeUsd value={spotMcap} />}
           />
           <Metric
             label="Spot"
-            value={price > 0 ? `${formatBot(price)} BOT` : '—'}
-            sub={price > 0 ? <BotUsd value={price} /> : null}
+            value={price > 0 ? `${formatNative(price)} HYPE` : '—'}
+            sub={price > 0 ? <HypeUsd value={price} /> : null}
           />
           <Metric
-            label="Pool BOT"
-            value={reserveBot != null ? formatBot(reserveBot) : '—'}
-            sub={reserveBot != null ? <BotUsd value={Number(formatEther(reserveBot))} /> : null}
+            label="Pool HYPE"
+            value={reserveNative != null ? formatNative(reserveNative) : '—'}
+            sub={reserveNative != null ? <HypeUsd value={Number(formatEther(reserveNative))} /> : null}
           />
           <Metric label="Trades" value={String(trades.length)} />
           <Metric
@@ -361,18 +461,67 @@ export function Platform() {
             <p className="page-kicker">About $VYNTRA</p>
             <ul className="space-y-3 text-base text-[var(--vyntra-muted)]">
               <li>First market on Vyntra — trade the platform token alongside meme launches.</li>
-              <li>1B fixed supply. Protocol volume routes BOT into this pool and burns VYNTRA.</li>
-              <li>0% pool fee on this market (buybacks and public trading).</li>
               <li>
-                Always tradeable here. To use an external market on mainnet, import the token contract
-                on BDEX.
+                1B fixed supply: 50M seeded into the market and the remaining 950M begins in the policy vault.
               </li>
+              <li>
+                Reserve vault balance: {formatVyntraAmount(reserveVaultBalance)} VYNTRA
+                {reserveDelay != null ? ` · ${Number(reserveDelay / 86_400n)}-day timelock delay` : ''}.
+              </li>
+              <li>
+                Budgets: incentives {formatVyntraAmount(communityBudget)} / 190M · grants {formatVyntraAmount(grantsBudget)} / 142.5M · unallocated {formatVyntraAmount(unallocatedBudget)} / 617.5M VYNTRA.
+              </li>
+              <li>
+                Reserve-funded campaigns share a 50M VYNTRA rolling 365-day release cap
+                {reserveOutflow != null && annualReleaseCap != null
+                  ? ` · ${formatVyntraAmount(reserveOutflow)} used of ${formatVyntraAmount(annualReleaseCap)}.`
+                  : '.'}
+                Unclaimed campaign tokens return to their original budget when the claim window ends; the cap usage does not reset.
+              </li>
+              <li>80% of protocol fees fund capped VYNTRA buybacks; the tokens are sent to the burn address.</li>
+              <li>1% Uniswap v4 pool fee. The Vyntra seed position is permanently locked.</li>
+              <li>
+                Always tradeable against HYPE in the same no-hook pool; buybacks also trade through this pool.
+              </li>
+              <li>Creators can burn VYNTRA to buy a clearly labeled featured placement.</li>
             </ul>
             <div className="space-y-2 border-t border-[var(--vyntra-border)] pt-4 text-sm">
               <AddrRow label="Token" addr={VYNTRA_TOKEN!} />
               <AddrRow label="Market" addr={VYNTRA_MARKET!} />
+              {poolManager ? <AddrRow label="PoolManager" addr={poolManager} /> : null}
+              {poolId ? <Row label="Pool ID" value={<span className="break-all font-mono text-xs">{poolId}</span>} /> : null}
               {BUYBACK_VAULT ? <AddrRow label="Buyback vault" addr={BUYBACK_VAULT} /> : null}
+              {VYNTRA_RESERVE_TIMELOCK ? <AddrRow label="Reserve timelock" addr={VYNTRA_RESERVE_TIMELOCK} /> : null}
+              {VYNTRA_RESERVE_VAULT ? <AddrRow label="Reserve policy vault" addr={VYNTRA_RESERVE_VAULT} /> : null}
             </div>
+            {reserveActivity.length > 0 ? (
+              <div className="space-y-2 border-t border-[var(--vyntra-border)] pt-4">
+                <p className="page-kicker">Public reserve activity</p>
+                {reserveActivity.slice(0, 8).map((event) => {
+                  const metadataURI = typeof event.payload.metadataURI === 'string' ? event.payload.metadataURI : null
+                  const label = event.eventName === 'CampaignCreated'
+                    ? `Campaign #${event.campaignId ?? '—'} · ${reserveBucketName(event.bucket)}`
+                    : event.eventName === 'CampaignClaimed'
+                      ? `Campaign #${event.campaignId ?? '—'} claimed`
+                      : event.eventName === 'CampaignExpired'
+                        ? `Campaign #${event.campaignId ?? '—'} expired`
+                        : event.eventName === 'BucketReallocated'
+                          ? 'Budget reallocated'
+                          : 'Reserve release recorded'
+                  return (
+                    <div key={`${event.txHash}-${event.logIndex}`} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <span className="text-[var(--vyntra-muted)]">
+                        {label}{event.timestamp ? ` · ${new Date(event.timestamp * 1000).toLocaleDateString()}` : ''}
+                        {metadataURI ? <> · <a className="text-[var(--vyntra-primary)] hover:underline" href={metadataURI} target="_blank" rel="noreferrer">Disclosure</a></> : null}
+                      </span>
+                      <span className="font-mono text-[var(--vyntra-fg)]">
+                        {event.amount ? `${formatVyntraAmount(BigInt(event.amount))} VYNTRA` : '—'}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -402,14 +551,14 @@ export function Platform() {
 
           <label className="block space-y-2.5">
             <div className="flex justify-between text-sm text-[var(--vyntra-muted)]">
-              <span>{side === 'buy' ? 'Pay (BOT)' : 'Sell ($VYNTRA)'}</span>
+              <span>{side === 'buy' ? 'Pay (HYPE)' : 'Sell ($VYNTRA)'}</span>
               <span className="font-mono">
                 {side === 'buy'
-                  ? `Bal ${formatBot(botBalance?.value ?? 0n)} BOT`
-                  : `Bal ${formatBot(tokenBalance ?? 0n)} VYNTRA`}
+                  ? `Bal ${formatNative(nativeBalance?.value ?? 0n)} HYPE`
+                  : `Bal ${formatNative(tokenBalance ?? 0n)} VYNTRA`}
                 {side === 'buy' && (
-                  <BotUsd
-                    value={Number(formatEther(botBalance?.value ?? 0n))}
+                  <HypeUsd
+                    value={Number(formatEther(nativeBalance?.value ?? 0n))}
                     className="block text-right text-[11px] font-normal text-[var(--vyntra-faint)]"
                   />
                 )}
@@ -424,7 +573,7 @@ export function Platform() {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
-            {side === 'buy' && <BotUsd value={Number(amount) || 0} className="text-xs text-[var(--vyntra-faint)]" />}
+            {side === 'buy' && <HypeUsd value={Number(amount) || 0} className="text-xs text-[var(--vyntra-faint)]" />}
           </label>
 
           <div className="mt-3 grid grid-cols-4 gap-2">
@@ -443,16 +592,21 @@ export function Platform() {
 
           <div className="mt-4 space-y-2 rounded-xl border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] px-4 py-3.5 text-sm">
             {side === 'buy' && buyQuote != null ? (
-              <Row label="You receive" value={`~${formatBot(buyQuote)} $VYNTRA`} mono />
+              <Row label="You receive" value={`~${formatNative(buyQuote)} $VYNTRA`} mono />
             ) : null}
             {side === 'sell' && sellQuote != null ? (
               <Row
                 label="You receive"
-                value={<span>~{formatBot(sellQuote)} BOT<BotUsd value={Number(formatEther(sellQuote))} /></span>}
+                value={<span>~{formatNative(sellQuote)} HYPE<HypeUsd value={Number(formatEther(sellQuote))} /></span>}
                 mono
               />
             ) : null}
             <Row label="Slippage guard" value="5%" />
+            {side === 'buy' && buyQuote === 0n ? (
+              <p className="text-xs text-amber-600 dark:text-amber-300">
+                Opening limit or pool depth reached. Buys share a 2% seed-supply cap for the first three blocks.
+              </p>
+            ) : null}
           </div>
 
           <div className="mt-5">
@@ -467,7 +621,7 @@ export function Platform() {
                 disabled={switching}
                 onClick={() => switchChain({ chainId: activeChain.id })}
               >
-                {switching ? 'Switching…' : 'Switch to BOT Chain'}
+                {switching ? 'Switching…' : 'Switch to Elysium Testnet'}
               </button>
             ) : (
               <button

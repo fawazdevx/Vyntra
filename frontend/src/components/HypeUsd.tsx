@@ -1,5 +1,4 @@
-import { useBotUsdPrice } from '../hooks/useBotUsdPrice'
-import { isMainnet } from '../lib/chains'
+import { useHypeUsdPrice } from '../hooks/useHypeUsdPrice'
 
 function formatUsd(value: number) {
   const abs = Math.abs(value)
@@ -11,8 +10,8 @@ function formatUsd(value: number) {
   }).format(value)
 }
 
-export function BotUsd({ value, className }: { value: number; className?: string }) {
-  const { data } = useBotUsdPrice()
+export function HypeUsd({ value, className }: { value: number; className?: string }) {
+  const { data } = useHypeUsdPrice()
   if (!Number.isFinite(value) || !data?.priceUsd) return null
 
   const usd = value * data.priceUsd
@@ -22,10 +21,9 @@ export function BotUsd({ value, className }: { value: number; className?: string
     <span
       className={className ?? 'block text-xs font-normal text-[var(--vyntra-muted)]'}
       title={
-        'Estimate using the current BOT Chain mainnet WBOT price from GeckoTerminal (' +
+        'Estimate using the current Hyperliquid mainnet HYPE price from GeckoTerminal (' +
         formatUsd(data.priceUsd) +
-        ' per BOT).' +
-        (isMainnet ? '' : ' Testnet BOT has no guaranteed dollar value.')
+        ' per HYPE). Elysium testnet HYPE has no guaranteed dollar value.'
       }
     >
       ≈ {formatUsd(usd)}

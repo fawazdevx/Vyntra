@@ -18,8 +18,8 @@ import {
   type AutoscaleInfoProvider,
 } from 'lightweight-charts'
 import type { TradePoint } from '../hooks/useTradeHistory'
-import { BotUsd } from './BotUsd'
-import { activeChain, isMainnet } from '../lib/chains'
+import { HypeUsd } from './HypeUsd'
+import { activeChain } from '../lib/chains'
 
 
 function chartTheme(mode: 'light' | 'dark') {
@@ -126,7 +126,7 @@ function formatMcap(price: number) {
   return price.toFixed(6)
 }
 
-function formatBotValue(value: number) {
+function formatNativeValue(value: number) {
   if (!Number.isFinite(value)) return '—'
   if (value === 0) return '0'
   const abs = Math.abs(value)
@@ -141,7 +141,7 @@ function formatBotValue(value: number) {
 }
 
 function formatChartValue(value: number, metric: ChartMetric) {
-  return metric === 'mcap' ? formatMcap(value) : formatBotValue(value)
+  return metric === 'mcap' ? formatMcap(value) : formatNativeValue(value)
 }
 
 function formatChartTime(timestamp: number) {
@@ -175,7 +175,7 @@ function aggregateCandles(trades: TradePoint[], intervalSec: number): CandleBuck
   for (const t of trades) {
     if (!finitePositive(t.mcap) || !Number.isFinite(t.time) || t.time <= 0) continue
     const time = floorBucket(Math.floor(t.time), intervalSec)
-    const vol = Number.isFinite(t.amountBot) && t.amountBot > 0 ? t.amountBot : 0
+    const vol = Number.isFinite(t.amountNative) && t.amountNative > 0 ? t.amountNative : 0
     const existing = map.get(time)
     if (!existing) {
       map.set(time, {
@@ -378,7 +378,7 @@ export function PriceChart({
       currentMcap: currentMcap ?? 0,
       currentPrice: (currentMcap ?? 0) / TOTAL_SUPPLY,
       changePct,
-      volumeBot: recent.reduce((sum, trade) => sum + (trade.amountBot > 0 ? trade.amountBot : 0), 0),
+      volumeNative: recent.reduce((sum, trade) => sum + (trade.amountNative > 0 ? trade.amountNative : 0), 0),
       trades24h: recent.length,
     }
   }, [trades, spotMcap])
@@ -629,7 +629,7 @@ export function PriceChart({
       : !loading && !error && noTradeHistory
         ? {
             title: 'Waiting for the first trade',
-            message: 'Current BOT values are shown above. Price history starts when a trade is recorded.',
+            message: 'Current HYPE values are shown above. Price history starts when a trade is recorded.',
           }
         : empty
           ? {
@@ -638,7 +638,7 @@ export function PriceChart({
             }
           : null
 
-  const metricLabel = metric === 'mcap' ? 'Market cap · BOT' : 'Token price · BOT / token'
+  const metricLabel = metric === 'mcap' ? 'Market cap · HYPE' : 'Token price · HYPE / token'
 
   return (
     <div
@@ -748,9 +748,7 @@ export function PriceChart({
             </div>
           </div>
           <p className="text-[10px] leading-4 text-[var(--vyntra-faint)]">
-            {isMainnet
-              ? 'USD estimates use the current BOT Chain mainnet WBOT reference price.'
-              : 'USD estimates use the current mainnet WBOT reference price; testnet BOT has no market-set dollar value.'}
+            USD estimates use the current Hyperliquid mainnet HYPE spot price as a reference; Elysium testnet HYPE has no guaranteed dollar value.
           </p>
         </div>
       </div>
@@ -758,13 +756,13 @@ export function PriceChart({
       <div className="grid grid-cols-2 divide-x divide-y divide-[var(--vyntra-border)] sm:grid-cols-3 xl:grid-cols-5 xl:divide-y-0">
         <div className="min-w-0 px-3 py-3 sm:px-4">
           <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">Market cap</p>
-          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.currentMcap > 0 ? `${formatBotValue(marketStats.currentMcap)} BOT` : '—'}</p>
-          {marketStats.currentMcap > 0 && <BotUsd value={marketStats.currentMcap} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />}
+          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.currentMcap > 0 ? `${formatNativeValue(marketStats.currentMcap)} HYPE` : '—'}</p>
+          {marketStats.currentMcap > 0 && <HypeUsd value={marketStats.currentMcap} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />}
         </div>
         <div className="min-w-0 px-3 py-3 sm:px-4">
           <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">Token price</p>
-          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.currentPrice > 0 ? `${formatBotValue(marketStats.currentPrice)} BOT` : '—'}</p>
-          {marketStats.currentPrice > 0 && <BotUsd value={marketStats.currentPrice} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />}
+          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.currentPrice > 0 ? `${formatNativeValue(marketStats.currentPrice)} HYPE` : '—'}</p>
+          {marketStats.currentPrice > 0 && <HypeUsd value={marketStats.currentPrice} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />}
         </div>
         <div className="min-w-0 px-3 py-3 sm:px-4">
           <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">24h change</p>
@@ -775,8 +773,8 @@ export function PriceChart({
         </div>
         <div className="min-w-0 px-3 py-3 sm:px-4">
           <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">24h volume</p>
-          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{formatBotValue(marketStats.volumeBot)} BOT</p>
-          <BotUsd value={marketStats.volumeBot} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />
+          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{formatNativeValue(marketStats.volumeNative)} HYPE</p>
+          <HypeUsd value={marketStats.volumeNative} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />
         </div>
         <div className="min-w-0 px-3 py-3 sm:px-4">
           <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">24h trades</p>
@@ -808,12 +806,12 @@ export function PriceChart({
               ))}
               <div>
                 <p className="font-mono text-[9px] text-[var(--vyntra-faint)]">VOL</p>
-                <p className="font-mono text-[10px] font-semibold text-[var(--vyntra-fg)]">{formatBotValue(hoveredCandle.volume)} BOT</p>
-                <BotUsd value={hoveredCandle.volume} className="font-mono text-[9px] text-[var(--vyntra-faint)]" />
+                <p className="font-mono text-[10px] font-semibold text-[var(--vyntra-fg)]">{formatNativeValue(hoveredCandle.volume)} HYPE</p>
+                <HypeUsd value={hoveredCandle.volume} className="font-mono text-[9px] text-[var(--vyntra-faint)]" />
               </div>
               <div>
                 <p className="font-mono text-[9px] text-[var(--vyntra-faint)]">UNIT</p>
-                <p className="font-mono text-[10px] font-semibold text-[var(--vyntra-fg)]">{metric === 'mcap' ? 'BOT mcap' : 'BOT / token'}</p>
+                <p className="font-mono text-[10px] font-semibold text-[var(--vyntra-fg)]">{metric === 'mcap' ? 'HYPE mcap' : 'HYPE / token'}</p>
               </div>
             </div>
           </div>

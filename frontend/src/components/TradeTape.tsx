@@ -1,7 +1,7 @@
-import { explorerTx, formatBot, shortAddr } from '../lib/config'
+import { explorerTx, formatNative, shortAddr } from '../lib/config'
 import type { TradePoint } from '../hooks/useTradeHistory'
 import { activeChain } from '../lib/chains'
-import { BotUsd } from './BotUsd'
+import { HypeUsd } from './HypeUsd'
 
 type Props = {
   trades: TradePoint[]
@@ -28,7 +28,7 @@ export function TradeTape({ trades, symbol }: Props) {
             <thead className="sticky top-0 bg-[#0b0b10] text-xs uppercase tracking-wider text-zinc-500">
               <tr>
                 <th className="px-4 py-3 font-semibold sm:px-5">Side</th>
-                <th className="px-2 py-3 font-semibold">BOT</th>
+                <th className="px-2 py-3 font-semibold">HYPE</th>
                 <th className="px-2 py-3 font-semibold">{symbol}</th>
                 <th className="px-2 py-3 font-semibold">Market cap</th>
                 <th className="px-4 py-3 font-semibold text-right sm:px-5">Who</th>
@@ -48,13 +48,13 @@ export function TradeTape({ trades, symbol }: Props) {
                     {t.side}
                   </td>
                   <td className="px-2 py-3 font-mono text-zinc-200">
-                    {formatBot(t.amountBot)}
-                    <BotUsd value={t.amountBot} className="block text-[10px] font-normal text-zinc-500" />
+                    {formatNative(t.amountNative)}
+                    <HypeUsd value={t.amountNative} className="block text-[10px] font-normal text-zinc-500" />
                   </td>
-                  <td className="px-2 py-3 font-mono text-zinc-400">{formatBot(t.amountToken)}</td>
+                  <td className="px-2 py-3 font-mono text-zinc-400">{formatNative(t.amountToken)}</td>
                   <td className="px-2 py-3 font-mono text-zinc-400">
-                    {formatBot(t.mcap)}
-                    <BotUsd value={t.mcap} className="block text-[10px] font-normal text-zinc-500" />
+                    {formatNative(t.mcap)}
+                    <HypeUsd value={t.mcap} className="block text-[10px] font-normal text-zinc-500" />
                   </td>
                   <td className="px-4 py-3 text-right sm:px-5">
                     <a

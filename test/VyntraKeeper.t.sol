@@ -85,22 +85,22 @@ contract VyntraKeeperTest is Test {
         assertGt(bb, 0);
         assertGt(liq, 0);
 
-        uint256 reservesBefore = VyntraCurve(payable(curve)).realBotReserves();
+        uint256 reservesBefore = VyntraCurve(payable(curve)).realNativeReserves();
         uint256 burnedBefore = VyntraToken(token).balanceOf(BURN);
 
         address[] memory splitters = new address[](1);
         splitters[0] = splitter;
 
         vm.roll(block.number + 4); // clear anti-snipe for buyback buy
-        (uint256 memeBot, uint256 liqOut) = keeper.sweepTax(splitters);
+        (uint256 memeNative, uint256 liqOut) = keeper.sweepTax(splitters);
 
-        assertEq(memeBot, bb);
+        assertEq(memeNative, bb);
         // inject runs after buyback; buyback re-accrues a little into liquidityAccrued first
         assertGe(liqOut, liq);
         assertLt(s.buybackAccrued(), bb);
         assertEq(s.liquidityAccrued(), 0);
         assertGt(VyntraToken(token).balanceOf(BURN), burnedBefore);
-        assertGe(VyntraCurve(payable(curve)).realBotReserves(), reservesBefore + liq);
+        assertGe(VyntraCurve(payable(curve)).realNativeReserves(), reservesBefore + liq);
     }
 
     function test_SweepAll() public {

@@ -47,16 +47,16 @@ async function fetchPlatformTrades(
 
   for (const e of buys) {
     const ts = e.blockNumber != null ? timestamps.get(e.blockNumber) : undefined
-    if (!ts || !e.transactionHash || e.args.botIn == null || e.args.vyntraOut == null) continue
-    const bot = Number(formatEther(e.args.botIn))
+    if (!ts || !e.transactionHash || e.args.nativeIn == null || e.args.vyntraOut == null) continue
+    const native = Number(formatEther(e.args.nativeIn))
     const tok = Number(formatEther(e.args.vyntraOut))
     if (tok <= 0) continue
-    const price = bot / tok
+    const price = native / tok
     trades.push({
       time: ts,
       price,
       mcap: price * TOTAL_SUPPLY,
-      amountBot: bot,
+      amountNative: native,
       amountToken: tok,
       side: 'buy',
       trader: (e.args.buyer || '0x0000000000000000000000000000000000000000') as Address,
@@ -66,16 +66,16 @@ async function fetchPlatformTrades(
 
   for (const e of sells) {
     const ts = e.blockNumber != null ? timestamps.get(e.blockNumber) : undefined
-    if (!ts || !e.transactionHash || e.args.vyntraIn == null || e.args.botOut == null) continue
-    const bot = Number(formatEther(e.args.botOut))
+    if (!ts || !e.transactionHash || e.args.vyntraIn == null || e.args.nativeOut == null) continue
+    const native = Number(formatEther(e.args.nativeOut))
     const tok = Number(formatEther(e.args.vyntraIn))
     if (tok <= 0) continue
-    const price = bot / tok
+    const price = native / tok
     trades.push({
       time: ts,
       price,
       mcap: price * TOTAL_SUPPLY,
-      amountBot: bot,
+      amountNative: native,
       amountToken: tok,
       side: 'sell',
       trader: (e.args.seller || '0x0000000000000000000000000000000000000000') as Address,
@@ -93,7 +93,7 @@ async function fetchPlatformTrades(
   return trades
 }
 
-/** Trade history for the seeded BOT/VYNTRA market (chart + tape). */
+/** Trade history for the seeded HYPE/VYNTRA market (chart + tape). */
 export function usePlatformTrades(market?: Address) {
   const publicClient = usePublicClient()
   const enabled = Boolean(market && publicClient)

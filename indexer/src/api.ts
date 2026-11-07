@@ -13,7 +13,7 @@ import { ensureSchema, getMeta, queryAll, queryOne, type LaunchRow, type TradeRo
 import { buildOhlcv } from './ohlcv.js'
 import { getHolders, getSnipers } from './analytics.js'
 import { getPortfolio, getWalletTrades } from './portfolio.js'
-import { getBotUsdPrice } from './bot-price.js'
+import { getHypeUsdPrice } from './hype-price.js'
 
 function launchJson(row: LaunchRow) {
   return {
@@ -28,14 +28,14 @@ function launchJson(row: LaunchRow) {
     description: row.description,
     createdAt: Number(row.created_at) * 1000,
     progressBps: Number(row.progress_bps),
-    raisedBot: Number(row.raised_bot),
+    raisedNative: Number(row.raised_native),
     graduated: Boolean(Number(row.graduated)),
     migrated: Boolean(Number(row.migrated)),
     externalPair: row.external_pair,
     buyTaxBps: Number(row.buy_tax_bps),
     sellTaxBps: Number(row.sell_tax_bps),
     tradeCount: Number(row.trade_count),
-    volumeBot: Number(row.volume_bot),
+    volumeNative: Number(row.volume_native),
     updatedAt: Number(row.updated_at),
   }
 }
@@ -87,15 +87,15 @@ export function createApp(opts: { basePath?: string } = {}) {
     }),
   )
 
-  app.get('/v1/bot-usd', async (c) => {
+  app.get('/v1/hype-usd', async (c) => {
     try {
-      const price = await getBotUsdPrice()
+      const price = await getHypeUsdPrice()
       c.header('Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=300')
       return c.json(price)
     } catch (error) {
       c.header('Cache-Control', 'no-store')
       return c.json(
-        { error: 'bot_price_unavailable', detail: error instanceof Error ? error.message : String(error) },
+        { error: 'hype_price_unavailable', detail: error instanceof Error ? error.message : String(error) },
         503,
       )
     }
@@ -142,9 +142,9 @@ export function createApp(opts: { basePath?: string } = {}) {
         COUNT(*) AS launches,
         SUM(CASE WHEN graduated = 0 AND migrated = 0 THEN 1 ELSE 0 END) AS on_curve,
         SUM(CASE WHEN graduated = 1 OR migrated = 1 THEN 1 ELSE 0 END) AS graduated,
-        COALESCE(SUM(raised_bot), 0) AS raised_bot,
-        COALESCE(SUM(volume_bot), 0) +
-          COALESCE((SELECT SUM(bot_amount) FROM platform_trades), 0) AS volume_bot,
+        COALESCE(SUM(raised_native), 0) AS raised_native,
+        COALESCE(SUM(volume_native), 0) +
+          COALESCE((SELECT SUM(native_amount) FROM platform_trades), 0) AS volume_native,
         COALESCE(SUM(trade_count), 0) +
           COALESCE((SELECT COUNT(*) FROM platform_trades), 0) AS trades
        FROM launches`,
@@ -153,10 +153,43 @@ export function createApp(opts: { basePath?: string } = {}) {
       launches: Number(row?.launches || 0),
       onCurve: Number(row?.on_curve || 0),
       graduated: Number(row?.graduated || 0),
-      raisedBot: Number(row?.raised_bot || 0),
-      volumeBot: Number(row?.volume_bot || 0),
+      raisedNative: Number(row?.raised_native || 0),
+      volumeNative: Number(row?.volume_native || 0),
       trades: Number(row?.trades || 0),
       lastBlock: await getMeta('last_block'),
+    })
+  })
+
+  app.get('/v1/reserve', async (c) => {
+    const limit = Math.min(Math.max(Number(c.req.query('limit') || 100), 1), 500)
+    const rows = await queryAll<Record<string, unknown>>(
+      `SELECT event_name, campaign_id, bucket, amount, recipient, block_number,
+              tx_hash, log_index, timestamp, payload_json
+       FROM reserve_events ORDER BY block_number DESC, log_index DESC LIMIT ?`,
+      [limit],
+    )
+    return c.json({
+      events: rows.map((row) => {
+        let payload: unknown = {}
+        try {
+          payload = JSON.parse(String(row.payload_json || '{}'))
+        } catch {
+          // Preserve the event row if a malformed legacy payload is found.
+        }
+        return {
+          eventName: String(row.event_name),
+          campaignId: row.campaign_id == null ? null : String(row.campaign_id),
+          bucket: row.bucket == null ? null : Number(row.bucket),
+          amount: row.amount == null ? null : String(row.amount),
+          recipient: row.recipient == null ? null : String(row.recipient),
+          blockNumber: Number(row.block_number),
+          txHash: String(row.tx_hash),
+          logIndex: Number(row.log_index),
+          timestamp: Number(row.timestamp),
+          payload,
+        }
+      }),
+      lastBlock: await getMeta('last_reserve_block'),
     })
   })
 
@@ -166,7 +199,7 @@ export function createApp(opts: { basePath?: string } = {}) {
     const orderBy: Record<string, string> = {
       trending: 'progress_bps DESC, id DESC',
       new: 'created_at DESC',
-      volume: 'volume_bot DESC',
+      volume: 'volume_native DESC',
       graduated: 'migrated DESC, graduated DESC, id DESC',
     }
     const order = orderBy[sort] || orderBy.trending
@@ -200,7 +233,7 @@ export function createApp(opts: { basePath?: string } = {}) {
         time,
         price: Number(r.price),
         mcap: Number(r.mcap),
-        amountBot: Number(r.bot_amount),
+        amountNative: Number(r.native_amount),
         amountToken: Number(r.token_amount),
         side: r.side,
         trader: r.trader,

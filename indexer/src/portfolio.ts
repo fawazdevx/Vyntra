@@ -14,16 +14,16 @@ export type PortfolioPosition = {
   boughtToken: number
   soldToken: number
   heldToken: number
-  spentBot: number
-  receivedBot: number
+  spentNative: number
+  receivedNative: number
   tradeCount: number
   firstTradeAt: number
   lastTradeAt: number
-  avgCostBot: number
+  avgCostNative: number
   lastPrice: number
-  realizedPnlBot: number
-  unrealizedPnlBot: number
-  totalPnlBot: number
+  realizedPnlNative: number
+  unrealizedPnlNative: number
+  totalPnlNative: number
 }
 
 export type PortfolioTrade = {
@@ -32,7 +32,7 @@ export type PortfolioTrade = {
   symbol: string
   name: string
   side: 'buy' | 'sell'
-  botAmount: number
+  nativeAmount: number
   tokenAmount: number
   price: number
   mcap: number
@@ -47,12 +47,12 @@ export type PortfolioSummary = {
   positionCount: number
   openCount: number
   tradeCount: number
-  spentBot: number
-  receivedBot: number
-  heldValueBot: number
-  realizedPnlBot: number
-  unrealizedPnlBot: number
-  totalPnlBot: number
+  spentNative: number
+  receivedNative: number
+  heldValueNative: number
+  realizedPnlNative: number
+  unrealizedPnlNative: number
+  totalPnlNative: number
 }
 
 function scrub(n: number) {
@@ -84,12 +84,12 @@ export async function getPortfolio(address: string): Promise<{
         positionCount: 0,
         openCount: 0,
         tradeCount: 0,
-        spentBot: 0,
-        receivedBot: 0,
-        heldValueBot: 0,
-        realizedPnlBot: 0,
-        unrealizedPnlBot: 0,
-        totalPnlBot: 0,
+        spentNative: 0,
+        receivedNative: 0,
+        heldValueNative: 0,
+        realizedPnlNative: 0,
+        unrealizedPnlNative: 0,
+        totalPnlNative: 0,
       },
     }
   }
@@ -98,7 +98,7 @@ export async function getPortfolio(address: string): Promise<{
     queryAll<{
       launch_id: number
       side: 'buy' | 'sell'
-      bot_amount: number
+      native_amount: number
       token_amount: number
       price: number
       timestamp: number
@@ -113,7 +113,7 @@ export async function getPortfolio(address: string): Promise<{
       graduated: number
       migrated: number
     }>(
-      `SELECT t.launch_id, t.side, t.bot_amount, t.token_amount, t.price, t.timestamp,
+      `SELECT t.launch_id, t.side, t.native_amount, t.token_amount, t.price, t.timestamp,
               t.block_number, t.log_index,
               l.token, l.curve, l.name, l.symbol, l.image_uri, l.creator, l.graduated, l.migrated
        FROM trades t
@@ -124,14 +124,14 @@ export async function getPortfolio(address: string): Promise<{
     ),
     queryAll<{
       side: 'buy' | 'sell'
-      bot_amount: number
+      native_amount: number
       token_amount: number
       price: number
       timestamp: number
       block_number: number
       log_index: number
     }>(
-      `SELECT side, bot_amount, token_amount, price, timestamp, block_number, log_index
+      `SELECT side, native_amount, token_amount, price, timestamp, block_number, log_index
        FROM platform_trades
        WHERE LOWER(trader) = ?
        ORDER BY timestamp ASC, block_number ASC, log_index ASC`,
@@ -172,13 +172,13 @@ export async function getPortfolio(address: string): Promise<{
     migrated: boolean
     boughtToken: number
     soldToken: number
-    spentBot: number
-    receivedBot: number
+    spentNative: number
+    receivedNative: number
     tradeCount: number
     firstTradeAt: number
     lastTradeAt: number
-    costBasisBot: number
-    realizedPnlBot: number
+    costBasisNative: number
+    realizedPnlNative: number
     inventory: number
   }
 
@@ -200,13 +200,13 @@ export async function getPortfolio(address: string): Promise<{
         migrated: Boolean(t.migrated),
         boughtToken: 0,
         soldToken: 0,
-        spentBot: 0,
-        receivedBot: 0,
+        spentNative: 0,
+        receivedNative: 0,
         tradeCount: 0,
         firstTradeAt: t.timestamp,
         lastTradeAt: t.timestamp,
-        costBasisBot: 0,
-        realizedPnlBot: 0,
+        costBasisNative: 0,
+        realizedPnlNative: 0,
         inventory: 0,
       }
       byPosition.set(key, acc)
@@ -218,21 +218,21 @@ export async function getPortfolio(address: string): Promise<{
 
     if (t.side === 'buy') {
       acc.boughtToken += t.token_amount
-      acc.spentBot += t.bot_amount
-      acc.costBasisBot += t.bot_amount
+      acc.spentNative += t.native_amount
+      acc.costBasisNative += t.native_amount
       acc.inventory += t.token_amount
     } else {
       const sellAmt = Math.min(t.token_amount, acc.inventory > 0 ? acc.inventory : t.token_amount)
-      const avgCost = acc.inventory > 1e-18 ? acc.costBasisBot / acc.inventory : 0
+      const avgCost = acc.inventory > 1e-18 ? acc.costBasisNative / acc.inventory : 0
       const costOut = avgCost * sellAmt
       acc.soldToken += t.token_amount
-      acc.receivedBot += t.bot_amount
-      acc.realizedPnlBot += t.bot_amount - costOut
-      acc.costBasisBot = Math.max(acc.costBasisBot - costOut, 0)
+      acc.receivedNative += t.native_amount
+      acc.realizedPnlNative += t.native_amount - costOut
+      acc.costBasisNative = Math.max(acc.costBasisNative - costOut, 0)
       acc.inventory = Math.max(acc.inventory - sellAmt, 0)
       if (acc.inventory <= 1e-12) {
         acc.inventory = 0
-        acc.costBasisBot = 0
+        acc.costBasisNative = 0
       }
     }
   }
@@ -256,11 +256,11 @@ export async function getPortfolio(address: string): Promise<{
   const positions: PortfolioPosition[] = [...byPosition.values()]
     .map((acc) => {
       const heldToken = Math.max(acc.inventory, 0)
-      const avgCostBot = heldToken > 1e-12 ? acc.costBasisBot / heldToken : 0
+      const avgCostNative = heldToken > 1e-12 ? acc.costBasisNative / heldToken : 0
       const lastPrice = acc.launchId === null
-        ? platformLastPrice ?? avgCostBot
-        : priceMap.get(acc.launchId) ?? avgCostBot
-      const unrealizedPnlBot = heldToken > 0 ? (lastPrice - avgCostBot) * heldToken : 0
+        ? platformLastPrice ?? avgCostNative
+        : priceMap.get(acc.launchId) ?? avgCostNative
+      const unrealizedPnlNative = heldToken > 0 ? (lastPrice - avgCostNative) * heldToken : 0
       return {
         launchId: acc.launchId,
         token: acc.token,
@@ -274,16 +274,16 @@ export async function getPortfolio(address: string): Promise<{
         boughtToken: scrub(acc.boughtToken),
         soldToken: scrub(acc.soldToken),
         heldToken: scrub(heldToken),
-        spentBot: scrub(acc.spentBot),
-        receivedBot: scrub(acc.receivedBot),
+        spentNative: scrub(acc.spentNative),
+        receivedNative: scrub(acc.receivedNative),
         tradeCount: acc.tradeCount,
         firstTradeAt: acc.firstTradeAt,
         lastTradeAt: acc.lastTradeAt,
-        avgCostBot: scrub(avgCostBot),
+        avgCostNative: scrub(avgCostNative),
         lastPrice: scrub(lastPrice),
-        realizedPnlBot: scrub(acc.realizedPnlBot),
-        unrealizedPnlBot: scrub(unrealizedPnlBot),
-        totalPnlBot: scrub(acc.realizedPnlBot + unrealizedPnlBot),
+        realizedPnlNative: scrub(acc.realizedPnlNative),
+        unrealizedPnlNative: scrub(unrealizedPnlNative),
+        totalPnlNative: scrub(acc.realizedPnlNative + unrealizedPnlNative),
       }
     })
     .sort((a, b) => b.lastTradeAt - a.lastTradeAt)
@@ -292,12 +292,12 @@ export async function getPortfolio(address: string): Promise<{
     positionCount: positions.length,
     openCount: positions.filter((p) => p.heldToken > 1e-12).length,
     tradeCount: positions.reduce((a, p) => a + p.tradeCount, 0),
-    spentBot: scrub(positions.reduce((a, p) => a + p.spentBot, 0)),
-    receivedBot: scrub(positions.reduce((a, p) => a + p.receivedBot, 0)),
-    heldValueBot: scrub(positions.reduce((a, p) => a + p.heldToken * p.lastPrice, 0)),
-    realizedPnlBot: scrub(positions.reduce((a, p) => a + p.realizedPnlBot, 0)),
-    unrealizedPnlBot: scrub(positions.reduce((a, p) => a + p.unrealizedPnlBot, 0)),
-    totalPnlBot: scrub(positions.reduce((a, p) => a + p.totalPnlBot, 0)),
+    spentNative: scrub(positions.reduce((a, p) => a + p.spentNative, 0)),
+    receivedNative: scrub(positions.reduce((a, p) => a + p.receivedNative, 0)),
+    heldValueNative: scrub(positions.reduce((a, p) => a + p.heldToken * p.lastPrice, 0)),
+    realizedPnlNative: scrub(positions.reduce((a, p) => a + p.realizedPnlNative, 0)),
+    unrealizedPnlNative: scrub(positions.reduce((a, p) => a + p.unrealizedPnlNative, 0)),
+    totalPnlNative: scrub(positions.reduce((a, p) => a + p.totalPnlNative, 0)),
   }
 
   return { address: wallet, positions, summary }
@@ -314,7 +314,7 @@ export async function getWalletTrades(
   type WalletTradeRow = {
     launch_id: number | null
     side: 'buy' | 'sell'
-    bot_amount: number
+    native_amount: number
     token_amount: number
     price: number
     mcap: number
@@ -331,7 +331,7 @@ export async function getWalletTrades(
 
   const [launchRows, platformRows] = await Promise.all([
     queryAll<Omit<WalletTradeRow, 'market' | 'launch_id'> & { launch_id: number }>(
-      `SELECT t.launch_id, t.side, t.bot_amount, t.token_amount, t.price, t.mcap, t.fee,
+      `SELECT t.launch_id, t.side, t.native_amount, t.token_amount, t.price, t.mcap, t.fee,
               t.timestamp, t.block_number, t.tx_hash, t.log_index, t.trader, l.symbol, l.name
        FROM trades t
        JOIN launches l ON l.id = t.launch_id
@@ -341,7 +341,7 @@ export async function getWalletTrades(
       [wallet, lim],
     ),
     queryAll<Omit<WalletTradeRow, 'market' | 'launch_id' | 'symbol' | 'name'>>(
-      `SELECT side, bot_amount, token_amount, price, mcap, fee,
+      `SELECT side, native_amount, token_amount, price, mcap, fee,
               timestamp, block_number, tx_hash, log_index, trader
        FROM platform_trades
        WHERE LOWER(trader) = ?
@@ -377,7 +377,7 @@ export async function getWalletTrades(
       symbol: r.symbol,
       name: r.name,
       side: r.side,
-      botAmount: r.bot_amount,
+      nativeAmount: r.native_amount,
       tokenAmount: r.token_amount,
       price: r.price,
       mcap: r.mcap,

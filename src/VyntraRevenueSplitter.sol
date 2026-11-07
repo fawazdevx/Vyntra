@@ -6,11 +6,11 @@ import {VyntraToken} from "./VyntraToken.sol";
 
 interface IVyntraCurve {
     function buy(uint256 minTokensOut, address referrer) external payable returns (uint256);
-    function injectBotLiquidity() external payable;
+    function injectNativeLiquidity() external payable;
 }
 
 /// @title VyntraRevenueSplitter
-/// @notice Per-launch Argus-style optional creator buy/sell tax with 4-way BOT split.
+/// @notice Per-launch Argus-style optional creator buy/sell tax with 4-way HYPE split.
 contract VyntraRevenueSplitter is ReentrancyGuard {
     uint256 public constant BPS = 10_000;
     address public constant BURN = 0x000000000000000000000000000000000000dEaD;
@@ -35,7 +35,7 @@ contract VyntraRevenueSplitter is ReentrancyGuard {
 
     event TaxReceived(uint256 amount, uint256 funds, uint256 buyback, uint256 dividends, uint256 liquidity);
     event FundsClaimed(address indexed creator, uint256 amount);
-    event MemeBuyback(address indexed caller, uint256 botSpent, uint256 tokensBurned);
+    event MemeBuyback(address indexed caller, uint256 nativeSpent, uint256 tokensBurned);
     event DividendsClaimed(address indexed account, uint256 amount);
     event LiquidityInjected(address indexed caller, uint256 amount);
 
@@ -78,7 +78,7 @@ contract VyntraRevenueSplitter is ReentrancyGuard {
         curve = curve_;
     }
 
-    /// @notice Called by the curve with meme tax BOT; splits into 4 accrual buckets.
+    /// @notice Called by the curve with meme tax HYPE; splits into 4 accrual buckets.
     /// @dev Not nonReentrant: may be invoked mid-trade (e.g. buyAndBurnMeme → curve.buy → tax).
     function receiveTax() external payable {
         if (msg.value == 0) revert BadAmount();
@@ -106,15 +106,15 @@ contract VyntraRevenueSplitter is ReentrancyGuard {
         emit FundsClaimed(creator, amount);
     }
 
-    /// @notice Spend buybackAccrued BOT on the curve and burn meme tokens.
-    function buyAndBurnMeme(uint256 botAmount, uint256 minTokensOut) external nonReentrant {
-        if (botAmount == 0 || botAmount > buybackAccrued) revert BadAmount();
+    /// @notice Spend buybackAccrued HYPE on the curve and burn meme tokens.
+    function buyAndBurnMeme(uint256 nativeAmount, uint256 minTokensOut) external nonReentrant {
+        if (nativeAmount == 0 || nativeAmount > buybackAccrued) revert BadAmount();
         if (curve == address(0)) revert BadConfig();
-        buybackAccrued -= botAmount;
+        buybackAccrued -= nativeAmount;
 
-        uint256 tokensOut = IVyntraCurve(curve).buy{value: botAmount}(minTokensOut, address(0));
+        uint256 tokensOut = IVyntraCurve(curve).buy{value: nativeAmount}(minTokensOut, address(0));
         require(token.transfer(BURN, tokensOut), "BURN");
-        emit MemeBuyback(msg.sender, botAmount, tokensOut);
+        emit MemeBuyback(msg.sender, nativeAmount, tokensOut);
     }
 
     function claimDividends() external nonReentrant {
@@ -132,13 +132,13 @@ contract VyntraRevenueSplitter is ReentrancyGuard {
         emit DividendsClaimed(msg.sender, share);
     }
 
-    /// @notice Inject liquidityAccrued BOT into the curve reserves.
-    function injectLiquidity(uint256 botAmount) external nonReentrant {
-        if (botAmount == 0 || botAmount > liquidityAccrued) revert BadAmount();
+    /// @notice Inject liquidityAccrued HYPE into the curve reserves.
+    function injectLiquidity(uint256 nativeAmount) external nonReentrant {
+        if (nativeAmount == 0 || nativeAmount > liquidityAccrued) revert BadAmount();
         if (curve == address(0)) revert BadConfig();
-        liquidityAccrued -= botAmount;
-        IVyntraCurve(curve).injectBotLiquidity{value: botAmount}();
-        emit LiquidityInjected(msg.sender, botAmount);
+        liquidityAccrued -= nativeAmount;
+        IVyntraCurve(curve).injectNativeLiquidity{value: nativeAmount}();
+        emit LiquidityInjected(msg.sender, nativeAmount);
     }
 
     function _validateTaxes(

@@ -18,14 +18,14 @@ function launchJson(row: Record<string, unknown>) {
     description: row.description,
     createdAt: Number(row.created_at) * 1000,
     progressBps: Number(row.progress_bps),
-    raisedBot: Number(row.raised_bot),
+    raisedNative: Number(row.raised_native),
     graduated: Boolean(Number(row.graduated)),
     migrated: Boolean(Number(row.migrated)),
     externalPair: row.external_pair,
     buyTaxBps: Number(row.buy_tax_bps),
     sellTaxBps: Number(row.sell_tax_bps),
     tradeCount: Number(row.trade_count),
-    volumeBot: Number(row.volume_bot),
+    volumeNative: Number(row.volume_native),
     updatedAt: Number(row.updated_at),
   }
 }
@@ -60,7 +60,7 @@ export default async function handler(req: Request) {
           time,
           price: Number(r.price),
           mcap: Number(r.mcap),
-          amountBot: Number(r.bot_amount),
+          amountNative: Number(r.native_amount),
           amountToken: Number(r.token_amount),
           side: r.side,
           trader: r.trader,
@@ -78,7 +78,7 @@ export default async function handler(req: Request) {
       const allowed = new Set([60, 300, 900, 3600, 86400])
       const sec = allowed.has(interval) ? interval : 300
       const rows = await qAll(
-        `SELECT timestamp, price, bot_amount AS volume FROM trades WHERE launch_id = ? ORDER BY timestamp ASC, id ASC`,
+        `SELECT timestamp, price, native_amount AS volume FROM trades WHERE launch_id = ? ORDER BY timestamp ASC, id ASC`,
         [id],
       )
       const candles: Array<Record<string, number>> = []

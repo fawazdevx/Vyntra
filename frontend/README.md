@@ -1,104 +1,48 @@
-# Spawn.fun frontend
+# Vyntra frontend
 
-Vite + React + wagmi + RainbowKit. Token image uploads go through `POST /api/upload-image` (Catbox proxy): Vite middleware in local dev, Vercel serverless in production.
+React, Vite, wagmi, and RainbowKit frontend for Kinetiq Elysium Testnet (`99801`, HYPE gas).
 
-## Local
+## Run locally
 
 ```bash
-cp .env.example .env   # if present; or copy keys from repo docs
+cp .env.example .env
+# Add the Elysium contract addresses after deployment.
 npm install
 npm run dev
 ```
 
 ## Deploy to Vercel
 
-### 1. Prep repo
-
-Commit the `frontend/` app (includes `api/upload-image.ts` + `vercel.json`).
-
-### 2. Create the project
-
-**CLI**
-
-```bash
-cd frontend
-npx vercel login
-npx vercel          # preview
-npx vercel --prod   # production
-```
-
-When prompted:
-
-| Setting | Value |
-|--------|--------|
-| Root Directory | `frontend` (if linking the monorepo root) |
-| Framework | Vite (auto from `vercel.json`) |
-| Build Command | `npm run build` |
-| Output Directory | `dist` |
-
-**Dashboard**
-
-1. [vercel.com/new](https://vercel.com/new) → import the Git repo  
-2. **Root Directory** → `frontend`  
-3. Framework Preset → Vite  
-4. Add Environment Variables (below) → Deploy  
-
-### 3. Environment variables
-
-Set these in **Vercel → Project → Settings → Environment Variables** (Production + Preview):
+Use `frontend` as the project Root Directory, Vite as the framework, `npm run build` as the build
+command, and `dist` as the output directory. Set these variables in Production and Preview:
 
 | Name | Required | Notes |
-|------|----------|--------|
-| `VITE_FACTORY_ADDRESS` | yes | VyntraFactory |
-| `VITE_VYNTRA_TOKEN` | yes | Platform token (aliases: `VITE_SPAWN_TOKEN`) |
-| `VITE_VYNTRA_MARKET` | yes | Platform market (aliases: `VITE_SPAWN_MARKET`) |
-| `VITE_BUYBACK_VAULT` | yes | |
-| `VITE_FEE_ROUTER` | yes | |
+| --- | --- | --- |
+| `VITE_CHAIN_ID` | yes | `99801` |
+| `VITE_ELYSIUM_TESTNET_RPC_URL` | optional | Defaults to `https://testnet-rpc.elysium.kinetiq.xyz` |
+| `VITE_FACTORY_ADDRESS` | yes | Elysium VyntraFactory |
+| `VITE_VYNTRA_TOKEN` | yes | Platform token |
+| `VITE_VYNTRA_MARKET` | yes | Platform HYPE market |
+| `VITE_VYNTRA_RESERVE_TIMELOCK` | yes | Public reserve-operation delay |
+| `VITE_VYNTRA_RESERVE_VAULT` | yes | Live allocation balances and rolling release cap |
+| `VITE_VYNTRA_PROMOTION` | yes | Creator featured-placement contract |
+| `VITE_BUYBACK_VAULT` | yes | Buyback vault |
+| `VITE_FEE_ROUTER` | yes | Fee router |
 | `VITE_BOARD_ADDRESS` | optional | On-chain replies |
 | `VITE_KEEPER_ADDRESS` | optional | Keeper panel |
-| `VITE_WALLETCONNECT_ID` | yes (prod) | [cloud.walletconnect.com](https://cloud.walletconnect.com) |
-| `VITE_INDEXER_URL` | optional | **Public** HTTPS origin of the indexer API (no trailing path). Example: `https://indexer.yourdomain.com`. Do **not** use `localhost` on Vercel — the browser of each visitor must reach this URL. Leave unset to use RPC-only (no portfolio/holders from indexer). |
-| `VITE_BOT_TESTNET_RPC_URL` | optional | default `https://rpc.bohr.life` |
-| `VITE_BOT_MAINNET_RPC_URL` | optional | default `https://rpc.botchain.ai` |
-| `VITE_IMGBB_API_KEY` | optional | backup if Catbox API fails |
+| `VITE_INDEXER_URL` | optional | Indexer URL including `/api`, e.g. `https://vyntra-indexer.vercel.app/api` |
+| `VITE_WALLETCONNECT_ID` | yes for production wallets | WalletConnect Cloud project ID |
+| `VITE_IMGBB_API_KEY` | optional | Image upload fallback |
 
-Redeploy after changing env vars (`VITE_*` are baked in at build time).
+`VITE_*` values are baked into the build. Redeploy after changing them. Set the indexer project to
+index `VYNTRA_RESERVE_VAULT_ADDRESS` and its deployment block so campaign activity appears on the
+VYNTRA page. Give the Elysium indexer a separate Turso database from any other chain deployment.
 
-#### What to put in `VITE_INDEXER_URL`
+The USD helper uses Hyperliquid mainnet HYPE as a reference. Testnet HYPE has no guaranteed dollar
+value, so the displayed USD amount is only an estimate.
 
-1. Deploy `indexer/` as its **own** Vercel project (Root Directory `indexer`) with Turso — see [indexer/README.md](../indexer/README.md).
-2. Set `VITE_INDEXER_URL` to that project's public origin **plus** `/api`, e.g. `https://vyntra-indexer.vercel.app/api`.
-3. Confirm `curl https://…/api/health` returns `{"ok":true,...}`.
-4. Local: `http://127.0.0.1:8787` (no `/api` prefix when using `npm run dev`).
-5. Leave unset to use RPC-only (no portfolio/holders from indexer).
+## Image uploads
 
-n if any
-
-### 5. Verify upload API
-
-After deploy:
-
-```bash
-curl -s -X POST https://YOUR_DOMAIN/api/upload-image \
-  -H 'Content-Type: application/json' \
-  -d '{"filename":"t.jpg","contentType":"image/jpeg","dataBase64":"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAGfAP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Bf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEABj8Cf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAT8hf//Z"}'
-```
-
-Expect `{"url":"https://files.catbox.moe/..."}`.
-
-Then open `/spawn` and upload a token image in the UI.
-
-## Image upload architecture
-
-```
-Browser (compress ≤512px JPEG)
-    → POST /api/upload-image  { dataBase64, filename, contentType }
-        → Catbox (server-side, no CORS issues)
-    ← { url }
-    → imageURI on spawn()
-```
-
-- Local: `plugins/uploadImage.ts` Vite middleware  
-- Vercel: `api/upload-image.ts` serverless function  
-- Shared: `server/uploadToCatbox.ts`  
-- Optional fallback: `VITE_IMGBB_API_KEY`
+The browser compresses token images and sends them through `/api/upload-image`. In local Vite,
+`plugins/uploadImage.ts` handles the request. Vercel uses `api/upload-image.ts`; the server tries
+Catbox, Litterbox, then `0x0.st`. Users can also paste an image URL.

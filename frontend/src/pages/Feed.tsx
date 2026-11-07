@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useReadContracts } from 'wagmi'
 import { Rocket, Flame, Clock, Trophy, RefreshCw, Star } from 'lucide-react'
 import { TokenCard } from '../components/TokenCard'
 import { PlatformTokenCard } from '../components/PlatformTokenCard'
 import { useLaunches } from '../hooks/useLaunches'
 import { useWatchlist } from '../hooks/useWatchlist'
-import { formatBot, type LaunchView } from '../lib/config'
+import { formatNative, VYNTRA_PROMOTION, type LaunchView } from '../lib/config'
 import { formatUserError } from '../lib/errors'
-import { BotUsd } from '../components/BotUsd'
+import { HypeUsd } from '../components/HypeUsd'
+import { vyntraPromotionAbi } from '../lib/abis'
 
 type Tab = 'live' | 'new' | 'graduating' | 'graduated' | 'watchlist'
 
@@ -16,26 +18,66 @@ export function Feed() {
   const { data: launches = [], isLoading, isError, error, refetch, isFetching } = useLaunches()
   const { ids: watchIds, count: watchCount } = useWatchlist()
 
+  const promotionReads = useMemo(
+    () => (VYNTRA_PROMOTION
+      ? launches.map((launch) => ({
+          address: VYNTRA_PROMOTION,
+          abi: vyntraPromotionAbi,
+          functionName: 'featuredUntil' as const,
+          args: [launch.token] as const,
+        }))
+      : []),
+    [launches],
+  )
+  const { data: promotionResults } = useReadContracts({
+    contracts: promotionReads,
+    query: {
+      enabled: Boolean(VYNTRA_PROMOTION && promotionReads.length > 0),
+      refetchInterval: 30_000,
+    },
+  })
+  const featuredUntilByToken = useMemo(() => {
+    const untilByToken = new Map<string, number>()
+    launches.forEach((launch, index) => {
+      const result = promotionResults?.[index]
+      untilByToken.set(
+        launch.token.toLowerCase(),
+        result?.status === 'success' ? Number(result.result) : 0,
+      )
+    })
+    return untilByToken
+  }, [launches, promotionResults])
+
   const filtered = useMemo(() => {
     const list = [...launches]
+    let visible: LaunchView[]
     if (tab === 'watchlist') {
       const set = new Set(watchIds)
-      return list.filter((l) => set.has(l.id)).sort((a, b) => b.createdAt - a.createdAt)
-    }
-    if (tab === 'new') return list.sort((a, b) => b.createdAt - a.createdAt)
-    if (tab === 'graduating')
-      return list
+      visible = list.filter((l) => set.has(l.id)).sort((a, b) => b.createdAt - a.createdAt)
+    } else if (tab === 'new') {
+      visible = list.sort((a, b) => b.createdAt - a.createdAt)
+    } else if (tab === 'graduating') {
+      visible = list
         .filter((l) => !l.graduated && l.progressBps >= 5000)
         .sort((a, b) => b.progressBps - a.progressBps)
-    if (tab === 'graduated') return list.filter((l) => l.graduated || l.migrated)
-    return list.sort((a, b) => b.progressBps - a.progressBps)
-  }, [launches, tab, watchIds])
+    } else if (tab === 'graduated') {
+      visible = list.filter((l) => l.graduated || l.migrated)
+    } else {
+      visible = list.sort((a, b) => b.progressBps - a.progressBps)
+    }
+
+    return visible.sort((a, b) => {
+      const aFeatured = (featuredUntilByToken.get(a.token.toLowerCase()) ?? 0) > Date.now() / 1000
+      const bFeatured = (featuredUntilByToken.get(b.token.toLowerCase()) ?? 0) > Date.now() / 1000
+      return Number(bFeatured) - Number(aFeatured)
+    })
+  }, [launches, tab, watchIds, featuredUntilByToken])
 
   const stats = useMemo(() => {
     const live = launches.filter((l) => !l.graduated && !l.migrated).length
     const graduated = launches.filter((l) => l.graduated || l.migrated).length
-    const volume = launches.reduce((s, l) => s + l.raisedBot, 0)
-    return { live, graduated, volume: formatBot(volume), volumeBot: volume, total: launches.length, watchCount }
+    const volume = launches.reduce((s, l) => s + l.raisedNative, 0)
+    return { live, graduated, volume: formatNative(volume), volumeNative: volume, total: launches.length, watchCount }
   }, [launches, watchCount])
 
   const tabs: { id: Tab; label: string; icon: typeof Flame }[] = [
@@ -66,7 +108,7 @@ export function Feed() {
           <p className="page-kicker mb-2">Live markets</p>
           <h1 className="page-title text-4xl sm:text-5xl lg:text-6xl">Markets</h1>
           <p className="mt-3 max-w-xl text-base text-[var(--vyntra-muted)] sm:text-lg">
-            Fair launches on BOT Chain. Star coins to watch. Share and reply on-chain.
+            Fair launches on Elysium Testnet. Star coins to watch. Share and reply on-chain.
           </p>
         </div>
         <Link to="/spawn" className="btn-primary text-base">
@@ -77,10 +119,10 @@ export function Feed() {
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
         <Stat label="Launches" value={String(stats.total)} />
-        <Stat label="On curve" value={String(stats.live)} />
+        <Stat label="Live pools" value={String(stats.live)} />
         <Stat label="Graduated" value={String(stats.graduated)} />
         <Stat label="Watching" value={String(stats.watchCount)} />
-        <Stat label="BOT raised" value={stats.volume} mono sub={<BotUsd value={stats.volumeBot} />} />
+        <Stat label="HYPE raised" value={stats.volume} mono sub={<HypeUsd value={stats.volumeNative} />} />
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -155,8 +197,12 @@ export function Feed() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {tab !== 'watchlist' ? <PlatformTokenCard /> : null}
-          {filtered.map((launch: LaunchView) => (
-            <TokenCard key={launch.id} launch={launch} />
+          {filtered.map((launch) => (
+            <TokenCard
+              key={launch.id}
+              launch={launch}
+              featuredUntil={featuredUntilByToken.get(launch.token.toLowerCase())}
+            />
           ))}
         </div>
       )}

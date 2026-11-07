@@ -4,9 +4,9 @@ pragma solidity ^0.8.24;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-/// @dev Minimal BDEX/Uniswap V2 router+factory+WETH+pair mock for graduation tests.
-contract MockWBOT is ERC20 {
-    constructor() ERC20("Wrapped BOT", "WBOT") {}
+/// @dev Minimal Uniswap/Uniswap V2 router+factory+WETH+pair mock for graduation tests.
+contract MockWHYPE is ERC20 {
+    constructor() ERC20("Wrapped HYPE", "WHYPE") {}
 
     function deposit() external payable {
         _mint(msg.sender, msg.value);
@@ -27,7 +27,7 @@ contract MockPair is ERC20 {
     address public token0;
     address public token1;
 
-    constructor(address t0, address t1) ERC20("BDEX LP", "BDEX-LP") {
+    constructor(address t0, address t1) ERC20("Uniswap LP", "Uniswap-LP") {
         token0 = t0;
         token1 = t1;
     }
@@ -37,7 +37,7 @@ contract MockPair is ERC20 {
     }
 }
 
-contract MockBdexFactory {
+contract MockUniswapV2Factory {
     mapping(address => mapping(address => address)) public getPair;
     address public lastPair;
 
@@ -52,13 +52,13 @@ contract MockBdexFactory {
     }
 }
 
-contract MockBdexRouter {
-    MockBdexFactory public immutable uniFactory;
-    MockWBOT public immutable wbot;
+contract MockUniswapV2Router {
+    MockUniswapV2Factory public immutable uniFactory;
+    MockWHYPE public immutable wbot;
 
     constructor() {
-        uniFactory = new MockBdexFactory();
-        wbot = new MockWBOT();
+        uniFactory = new MockUniswapV2Factory();
+        wbot = new MockWHYPE();
     }
 
     function factory() external view returns (address) {
@@ -89,7 +89,7 @@ contract MockBdexRouter {
 
         require(IERC20(token).transferFrom(msg.sender, pair, amountToken), "TOKEN");
         wbot.deposit{value: amountETH}();
-        require(wbot.transfer(pair, amountETH), "WBOT");
+        require(wbot.transfer(pair, amountETH), "WHYPE");
 
         liquidity = amountToken < amountETH ? amountToken : amountETH;
         if (liquidity == 0) liquidity = 1;

@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { fetchBotUsdPriceFromIndexer, isIndexerConfigured } from '../lib/indexer'
+import { fetchHypeUsdPriceFromIndexer, isIndexerConfigured } from '../lib/indexer'
 
-export function useBotUsdPrice() {
+export function useHypeUsdPrice() {
   return useQuery({
-    queryKey: ['vyntra', 'bot-usd-price'],
-    queryFn: fetchBotUsdPriceFromIndexer,
+    queryKey: ['vyntra', 'hype-usd-price'],
+    queryFn: fetchHypeUsdPriceFromIndexer,
     enabled: isIndexerConfigured,
     staleTime: 60_000,
     refetchInterval: 60_000,

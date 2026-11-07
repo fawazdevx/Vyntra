@@ -4,8 +4,8 @@ import { useAccount } from 'wagmi'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Briefcase, ExternalLink } from 'lucide-react'
 import { activeChain } from '../lib/chains'
-import { BotUsd } from '../components/BotUsd'
-import { explorerTx, formatBot, shortAddr } from '../lib/config'
+import { HypeUsd } from '../components/HypeUsd'
+import { explorerTx, formatNative, shortAddr } from '../lib/config'
 import {
   fetchPortfolioFromIndexer,
   fetchWalletTradesFromIndexer,
@@ -24,7 +24,7 @@ function pnlClass(n: number) {
 
 function fmtSigned(n: number) {
   const sign = n > 0 ? '+' : ''
-  return `${sign}${formatBot(n)}`
+  return `${sign}${formatNative(n)}`
 }
 
 function fmtTokens(n: number) {
@@ -151,20 +151,20 @@ export function Portfolio() {
         <Metric label="Open" value={String(s?.openCount ?? '—')} />
         <Metric
           label="Held value"
-          value={s ? `${formatBot(s.heldValueBot)} BOT` : '—'}
-          sub={s ? <BotUsd value={s.heldValueBot} /> : null}
+          value={s ? `${formatNative(s.heldValueNative)} HYPE` : '—'}
+          sub={s ? <HypeUsd value={s.heldValueNative} /> : null}
         />
         <Metric
           label="Realized"
-          value={s ? `${fmtSigned(s.realizedPnlBot)} BOT` : '—'}
-          sub={s ? <BotUsd value={s.realizedPnlBot} /> : null}
-          valueClass={s ? pnlClass(s.realizedPnlBot) : undefined}
+          value={s ? `${fmtSigned(s.realizedPnlNative)} HYPE` : '—'}
+          sub={s ? <HypeUsd value={s.realizedPnlNative} /> : null}
+          valueClass={s ? pnlClass(s.realizedPnlNative) : undefined}
         />
         <Metric
           label="Total PnL"
-          value={s ? `${fmtSigned(s.totalPnlBot)} BOT` : '—'}
-          sub={s ? <BotUsd value={s.totalPnlBot} /> : null}
-          valueClass={s ? pnlClass(s.totalPnlBot) : undefined}
+          value={s ? `${fmtSigned(s.totalPnlNative)} HYPE` : '—'}
+          sub={s ? <HypeUsd value={s.totalPnlNative} /> : null}
+          valueClass={s ? pnlClass(s.totalPnlNative) : undefined}
         />
       </div>
 
@@ -222,7 +222,7 @@ export function Portfolio() {
                     <th className="px-4 py-3 font-semibold sm:px-5">When</th>
                     <th className="px-2 py-3 font-semibold">Token</th>
                     <th className="px-2 py-3 font-semibold">Side</th>
-                    <th className="px-2 py-3 font-semibold">BOT</th>
+                    <th className="px-2 py-3 font-semibold">HYPE</th>
                     <th className="px-4 py-3 font-semibold text-right sm:px-5">Tx</th>
                   </tr>
                 </thead>
@@ -248,8 +248,8 @@ export function Portfolio() {
                         {t.side}
                       </td>
                       <td className="px-2 py-3 font-mono">
-                        {formatBot(t.botAmount)}
-                        <BotUsd value={t.botAmount} />
+                        {formatNative(t.nativeAmount)}
+                        <HypeUsd value={t.nativeAmount} />
                       </td>
                       <td className="px-4 py-3 text-right sm:px-5">
                         <a
@@ -355,20 +355,20 @@ function PositionTable({
                   </td>
                   <td className="px-2 py-3 font-mono">{fmtTokens(p.heldToken)}</td>
                   <td className="px-2 py-3 font-mono text-[var(--vyntra-muted)]">
-                    {formatBot(p.avgCostBot)}
-                    <BotUsd value={p.avgCostBot} />
+                    {formatNative(p.avgCostNative)}
+                    <HypeUsd value={p.avgCostNative} />
                   </td>
                   <td className="px-2 py-3 font-mono text-[var(--vyntra-muted)]">
-                    {formatBot(p.lastPrice)}
-                    <BotUsd value={p.lastPrice} />
+                    {formatNative(p.lastPrice)}
+                    <HypeUsd value={p.lastPrice} />
                   </td>
-                  <td className={`px-2 py-3 font-mono ${pnlClass(p.realizedPnlBot)}`}>
-                    {fmtSigned(p.realizedPnlBot)}
-                    <BotUsd value={p.realizedPnlBot} />
+                  <td className={`px-2 py-3 font-mono ${pnlClass(p.realizedPnlNative)}`}>
+                    {fmtSigned(p.realizedPnlNative)}
+                    <HypeUsd value={p.realizedPnlNative} />
                   </td>
-                  <td className={`px-4 py-3 text-right font-mono sm:px-5 ${pnlClass(p.totalPnlBot)}`}>
-                    {fmtSigned(p.totalPnlBot)} BOT
-                    <BotUsd value={p.totalPnlBot} />
+                  <td className={`px-4 py-3 text-right font-mono sm:px-5 ${pnlClass(p.totalPnlNative)}`}>
+                    {fmtSigned(p.totalPnlNative)} HYPE
+                    <HypeUsd value={p.totalPnlNative} />
                   </td>
                 </tr>
               ))}

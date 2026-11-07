@@ -11,7 +11,7 @@ import {VyntraFeeRouter} from "../src/VyntraFeeRouter.sol";
 import {VyntraBuybackVault} from "../src/VyntraBuybackVault.sol";
 import {VyntraMarket} from "../src/VyntraMarket.sol";
 import {VYNTRA} from "../src/VYNTRA.sol";
-import {MockBdexRouter} from "./mocks/MockBdexRouter.sol";
+import {MockUniswapV2Router} from "./mocks/MockUniswapV2Router.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @notice Security-focused fuzz + invariant-style checks for fee/tax/migrate hardening.
@@ -37,14 +37,14 @@ contract VyntraSecurityTest is Test {
         return factory.spawn("Sec", "SEC", "ipfs://s", "security", address(0), 0, 0, 0, 0, 0, 0);
     }
 
-    function testFuzz_FeeSplitSumsToFee(uint96 botInRaw) public {
-        uint256 botIn = bound(uint256(botInRaw), 0.001 ether, 50 ether);
+    function testFuzz_FeeSplitSumsToFee(uint96 nativeInRaw) public {
+        uint256 nativeIn = bound(uint256(nativeInRaw), 0.001 ether, 50 ether);
         (, address curve) = _spawn();
         vm.roll(block.number + 4);
 
-        uint256 expectedFee = (botIn * FEE_BPS) / BPS;
+        uint256 expectedFee = (nativeIn * FEE_BPS) / BPS;
         vm.prank(bob);
-        VyntraCurve(payable(curve)).buy{value: botIn}(0, referrer);
+        VyntraCurve(payable(curve)).buy{value: nativeIn}(0, referrer);
 
         uint256 creator = VyntraCurve(payable(curve)).creatorFees();
         uint256 protocol = VyntraCurve(payable(curve)).protocolFees();
@@ -54,29 +54,29 @@ contract VyntraSecurityTest is Test {
         assertEq(ref, (expectedFee * 1_000) / BPS);
     }
 
-    function testFuzz_QuoteBuyMatchesExecution(uint96 botInRaw) public {
-        uint256 botIn = bound(uint256(botInRaw), 0.001 ether, 20 ether);
+    function testFuzz_QuoteBuyMatchesExecution(uint96 nativeInRaw) public {
+        uint256 nativeIn = bound(uint256(nativeInRaw), 0.001 ether, 20 ether);
         (address token, address curve) = _spawn();
         vm.roll(block.number + 4);
 
-        (uint256 quoted,) = VyntraCurve(payable(curve)).quoteBuy(botIn);
+        (uint256 quoted,) = VyntraCurve(payable(curve)).quoteBuy(nativeIn);
         uint256 before = VyntraToken(token).balanceOf(bob);
         vm.prank(bob);
-        uint256 out = VyntraCurve(payable(curve)).buy{value: botIn}(0, address(0));
+        uint256 out = VyntraCurve(payable(curve)).buy{value: nativeIn}(0, address(0));
         assertEq(out, quoted);
         assertEq(VyntraToken(token).balanceOf(bob), before + out);
     }
 
-    function testFuzz_PoolSolvencyAfterTrade(uint96 botInRaw) public {
-        uint256 botIn = bound(uint256(botInRaw), 0.01 ether, 30 ether);
+    function testFuzz_PoolSolvencyAfterTrade(uint96 nativeInRaw) public {
+        uint256 nativeIn = bound(uint256(nativeInRaw), 0.01 ether, 30 ether);
         (, address curve) = _spawn();
         vm.roll(block.number + 4);
 
         vm.prank(bob);
-        VyntraCurve(payable(curve)).buy{value: botIn}(0, referrer);
+        VyntraCurve(payable(curve)).buy{value: nativeIn}(0, referrer);
 
         uint256 bal = address(curve).balance;
-        uint256 reserved = VyntraCurve(payable(curve)).realBotReserves()
+        uint256 reserved = VyntraCurve(payable(curve)).realNativeReserves()
             + VyntraCurve(payable(curve)).creatorFees()
             + VyntraCurve(payable(curve)).protocolFees()
             + VyntraCurve(payable(curve)).referrerFees(referrer);
@@ -101,8 +101,8 @@ contract VyntraSecurityTest is Test {
     }
 
     function test_MigrateClearsAllowanceAndBlocksTrading() public {
-        MockBdexRouter bdex = new MockBdexRouter();
-        VyntraFactory f = new VyntraFactory(treasury, 1 ether, address(bdex));
+        MockUniswapV2Router uniswap = new MockUniswapV2Router();
+        VyntraFactory f = new VyntraFactory(treasury, 1 ether, address(uniswap));
         vm.prank(alice);
         (address token, address curve) =
             f.spawn("MigSec", "MSG", "ipfs://m", "migrate security", address(0), 0, 0, 0, 0, 0, 0);
@@ -112,7 +112,7 @@ contract VyntraSecurityTest is Test {
         VyntraCurve(payable(curve)).buy{value: 1.02 ether}(0, address(0));
 
         assertTrue(VyntraCurve(payable(curve)).migrated());
-        assertEq(IERC20(token).allowance(curve, address(bdex)), 0);
+        assertEq(IERC20(token).allowance(curve, address(uniswap)), 0);
 
         vm.prank(bob);
         vm.expectRevert(VyntraCurve.Migrated.selector);

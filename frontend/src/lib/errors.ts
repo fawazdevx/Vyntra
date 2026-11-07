@@ -43,7 +43,7 @@ export function formatUserError(err: unknown, fallback = 'Something went wrong. 
     m.includes('switch chain') ||
     m.includes('chain id')
   ) {
-    return 'Wrong network. Switch to BOT Chain and try again.'
+    return 'Wrong network. Switch to Elysium Testnet and try again.'
   }
 
   // Funds / gas
@@ -55,7 +55,7 @@ export function formatUserError(err: unknown, fallback = 'Something went wrong. 
     m.includes('outoffunds') ||
     m.includes('out of funds')
   ) {
-    return 'Not enough BOT for this trade (including network fee).'
+    return 'Not enough HYPE for this trade (including network fee).'
   }
 
   // Spawn / factory domain errors
@@ -72,7 +72,7 @@ export function formatUserError(err: unknown, fallback = 'Something went wrong. 
     return 'Early buy limit — wait a moment or buy a smaller amount.'
   }
   if (m.includes('migrated') || m.includes('0xe0551aa9')) {
-    return 'This curve already migrated. Import the token on BDEX (mainnet) — Vyntra buy/sell are closed for this launch.'
+    return 'This curve migrated to Uniswap — Vyntra curve trading is closed for this launch.'
   }
   if (m.includes('graduatedalready') || m.includes('curve closed')) {
     return 'This market has graduated. Trading stays open on Vyntra.'

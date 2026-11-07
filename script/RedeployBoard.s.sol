@@ -6,9 +6,9 @@ import {VyntraBoard} from "../src/VyntraBoard.sol";
 
 /// @notice Redeploy VyntraBoard with PLATFORM_THREAD (launchId 0) for $VYNTRA replies.
 ///
-///   FACTORY_ADDRESS=0x292DDf3D31CCeE837915de4585965441BBD77395 \
+///   FACTORY_ADDRESS=0x... \
 ///   forge script script/RedeployBoard.s.sol:RedeployBoard \
-///     --rpc-url $BOT_TESTNET_RPC_URL --chain-id 968 \
+///     --rpc-url https://testnet-rpc.elysium.kinetiq.xyz --chain-id 99801 \
 ///     --account deploytestKey --sender $OWNER_ADDRESS \
 ///     --broadcast --slow -vvv
 contract RedeployBoard is Script {
