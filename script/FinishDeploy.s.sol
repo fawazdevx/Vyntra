@@ -17,10 +17,10 @@ import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 
 /// @notice Continue a partial Deploy after VYNTRA is already on-chain (nonce race).
 ///
-/// Do NOT use `forge script --resume` on the broken broadcast — approve/seed
+/// Do NOT use `forge script --resume` on the broken broadcast — approval and curve setup
 /// would target stale simulated addresses.
 ///
-///   EXISTING_VYNTRA=0x… NATIVE_SEED=5000000000000000000 \
+///   EXISTING_VYNTRA=0x… VYNTRA_GRADUATION_THRESHOLD=5000000000000000000 \
 ///   forge script script/FinishDeploy.s.sol:FinishDeploy \
 ///     --rpc-url https://testnet-rpc.elysium.kinetiq.xyz \
 ///     --chain-id 99801 \
@@ -34,8 +34,8 @@ contract FinishDeploy is Script {
         address vyntraAddr = vm.envAddress("EXISTING_VYNTRA");
         address opsTreasury = vm.envOr("TREASURY", msg.sender);
         uint256 threshold = vm.envOr("GRADUATION_THRESHOLD", uint256(1_000 ether));
-        uint256 nativeSeed = vm.envOr("NATIVE_SEED", uint256(5 ether));
-        uint256 vyntraSeed = vm.envOr("VYNTRA_SEED", uint256(50_000_000 ether));
+        uint256 vyntraThreshold = vm.envOr("VYNTRA_GRADUATION_THRESHOLD", uint256(5 ether));
+        uint256 vyntraAllocation = 50_000_000 ether;
         uint256 promotionFee = vm.envOr("VYNTRA_PROMOTION_FEE", uint256(250_000 ether));
         address reserveSafe = vm.envOr("VYNTRA_RESERVE_SAFE", opsTreasury);
         uint256 totalVyntraSupply = 1_000_000_000 ether;
@@ -44,20 +44,19 @@ contract FinishDeploy is Script {
         VYNTRA vyntraToken = VYNTRA(vyntraAddr);
         require(address(vyntraToken).code.length > 0, "VYNTRA has no code");
         require(vyntraToken.totalSupply() == totalVyntraSupply, "UNEXPECTED_VYNTRA_SUPPLY");
-        require(vyntraToken.balanceOf(msg.sender) >= vyntraSeed, "insufficient VYNTRA for seed");
-        require(vyntraSeed == 50_000_000 ether, "VYNTRA_SEED_MUST_BE_50M");
+        require(vyntraToken.balanceOf(msg.sender) >= vyntraAllocation, "insufficient VYNTRA for market allocation");
 
         console2.log("Deployer", msg.sender);
         console2.log("Existing VYNTRA", vyntraAddr);
         console2.log("Ops treasury", opsTreasury);
-        console2.log("Market HYPE seed", nativeSeed);
-        console2.log("Market VYNTRA seed", vyntraSeed);
+        console2.log("VYNTRA market graduation target (HYPE wei)", vyntraThreshold);
+        console2.log("VYNTRA market allocation", vyntraAllocation);
         console2.log("VYNTRA reserve Safe/proposer", reserveSafe);
         console2.log("VYNTRA promotion fee per day", promotionFee);
-        console2.log("Deployer HYPE balance", msg.sender.balance);
+        console2.log("Deployer HYPE balance for gas", msg.sender.balance);
 
-        if (msg.sender.balance < nativeSeed + 0.5 ether) {
-            console2.log("WARNING: balance may be too low for seed+gas");
+        if (msg.sender.balance < 0.5 ether) {
+            console2.log("WARNING: balance may be too low for deployment gas");
         }
 
         vm.startBroadcast();
@@ -66,16 +65,16 @@ contract FinishDeploy is Script {
         VyntraReserveTimelock reserveTimelock = new VyntraReserveTimelock(reserveSafe);
         VyntraReserveVault reserveVault = new VyntraReserveVault(vyntraAddr, address(reserveTimelock));
 
-        VyntraMarket market = new VyntraMarket(vyntraAddr, address(poolManager));
+        VyntraMarket market = new VyntraMarket(vyntraAddr, address(poolManager), vyntraThreshold);
         VyntraBuybackVault vault = new VyntraBuybackVault(address(market), vyntraAddr);
         VyntraFeeRouter router = new VyntraFeeRouter(address(vault), opsTreasury);
         market.setFeeRecipient(address(router));
 
-        vyntraToken.approve(address(market), vyntraSeed);
-        market.seed{value: nativeSeed}(vyntraSeed);
+        vyntraToken.approve(address(market), vyntraAllocation);
+        market.initializeCurve(vyntraAllocation);
 
         uint256 reserveAmount = vyntraToken.balanceOf(msg.sender);
-        require(reserveAmount == totalVyntraSupply - vyntraSeed, "UNEXPECTED_VYNTRA_RESERVE");
+        require(reserveAmount == totalVyntraSupply - vyntraAllocation, "UNEXPECTED_VYNTRA_RESERVE");
         require(vyntraToken.transfer(address(reserveVault), reserveAmount), "RESERVE_TRANSFER");
 
         VyntraMarketDeployer marketDeployer = new VyntraMarketDeployer();

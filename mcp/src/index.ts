@@ -548,16 +548,11 @@ function createServer() {
         symbol: z.string().trim().min(1).max(10),
         imageURI: z.string().trim().min(1).max(2048),
         description: z.string().trim().min(1).max(2000),
-        initialLiquidityHype: z.string().min(1),
       }),
     },
-    async ({ name, symbol, imageURI, description, initialLiquidityHype }) => {
+    async ({ name, symbol, imageURI, description }) => {
       try {
         const factory = requireFactory()
-        const liquidity = parseAmount(initialLiquidityHype, 'Initial HYPE liquidity')
-        if (liquidity < parseEther('5') || liquidity > parseEther('100')) {
-          throw new Error('Initial liquidity must be between 5 and 100 HYPE.')
-        }
         const normalizedSymbol = symbol.toUpperCase()
         const [nameTaken, symbolTaken, vanity] = await Promise.all([
           publicClient.readContract({ address: factory, abi: factoryAbi, functionName: 'isNameTaken', args: [name] }),
@@ -576,11 +571,11 @@ function createServer() {
           args: [name, normalizedSymbol, imageURI, description, zeroAddress, 0n, 0n, 0n, 0n, 0n, 0n, salt],
         })
         return textResult({
-          transaction: txPayload(factory, data, liquidity, `Launch ${name} ($${normalizedSymbol})`),
+          transaction: txPayload(factory, data, 0n, `Launch ${name} ($${normalizedSymbol})`),
           predictedToken,
           vanitySuffix: '7f7',
-          initialLiquidityHype: formatEther(liquidity),
-          checkBeforeSigning: 'Confirm name, ticker, image URI, description, 5–100 HYPE seed, and predicted token address.',
+          hypeRequiredForLaunch: 'No HYPE is required for liquidity or a platform launch fee; the wallet needs HYPE only for network gas.',
+          checkBeforeSigning: 'Confirm name, ticker, image URI, description, gas estimate, and predicted token address.',
         })
       } catch (error) {
         return errorResult(error)

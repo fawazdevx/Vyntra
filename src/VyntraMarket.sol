@@ -3,11 +3,12 @@ pragma solidity ^0.8.24;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {BondingCurveMath} from "./BondingCurveMath.sol";
 import {IPoolManager} from "@uniswap/v4-core/src/interfaces/IPoolManager.sol";
 import {IUnlockCallback} from "@uniswap/v4-core/src/interfaces/callback/IUnlockCallback.sol";
 import {IHooks} from "@uniswap/v4-core/src/interfaces/IHooks.sol";
 import {BalanceDelta, BalanceDeltaLibrary} from "@uniswap/v4-core/src/types/BalanceDelta.sol";
-import {Currency} from "@uniswap/v4-core/src/types/Currency.sol";
+import {Currency, CurrencyLibrary} from "@uniswap/v4-core/src/types/Currency.sol";
 import {PoolId, PoolIdLibrary} from "@uniswap/v4-core/src/types/PoolId.sol";
 import {PoolKey} from "@uniswap/v4-core/src/types/PoolKey.sol";
 import {ModifyLiquidityParams, SwapParams} from "@uniswap/v4-core/src/types/PoolOperation.sol";
@@ -19,19 +20,19 @@ import {SwapMath} from "@uniswap/v4-core/src/libraries/SwapMath.sol";
 import {TickMath} from "@uniswap/v4-core/src/libraries/TickMath.sol";
 
 /// @title VyntraMarket
-/// @notice No-hook Uniswap v4 HYPE/VYNTRA market with a permanently locked seed position.
-/// @dev Keeps the existing VYNTRA buy/sell API. There is no liquidity-removal or arbitrary-call path.
+/// @notice Buyer-funded VYNTRA curve that graduates into a permanently locked no-hook V4 pool.
+/// @dev The deployment allocates 50M VYNTRA to this market, but requires no HYPE seed. Buyers
+///      collectively fund the configured graduation reserve. The 950M policy reserve is separate.
 contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
     using BalanceDeltaLibrary for BalanceDelta;
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
-    uint24 public constant POOL_FEE = 10_000; // 1%
+    uint24 public constant POOL_FEE = 10_000;
     int24 public constant TICK_SPACING = 200;
-    uint256 public constant MIN_NATIVE_SEED = 5 ether;
-    uint256 public constant MAX_NATIVE_SEED = 100 ether;
     uint256 public constant ANTI_SNIPE_BLOCKS = 3;
     uint256 public constant MAX_BUY_BPS_ANTI_SNIPE = 200;
+    uint256 public constant FEE_BPS = 100;
     uint256 private constant BPS = 10_000;
     address public constant BURN = 0x000000000000000000000000000000000000dEaD;
 
@@ -43,19 +44,29 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
     IERC20 public immutable vyntra;
     IPoolManager public immutable poolManager;
     address public immutable owner;
+    uint256 public immutable graduationThreshold;
 
     address public feeRecipient;
     bool public initialized;
+    bool public graduated;
     bool private _unlockActive;
     uint8 private _expectedOperation;
     uint160 public initialSqrtPriceX96;
     uint128 public initialLiquidity;
     PoolId public poolId;
     uint256 public seedBlock;
+    uint256 public launchBlock;
     uint256 public seededVyntra;
+    uint256 public curveTokenSupply;
+    uint256 public poolTokenAllocation;
+    uint256 public tokensSold;
     uint256 public earlyTokensBought;
+    uint256 public realNativeReserves;
+    uint256 public protocolFees;
 
-    event Seeded(uint256 nativeAmount, uint256 vyntraAmount);
+    event CurveOpened(uint256 vyntraAllocation, uint256 curveTokenSupply, uint256 poolTokenAllocation, uint256 graduationThreshold);
+    event Seeded(uint256 nativeAmount, uint256 vyntraAmount); // retained as the pool-graduation event
+    event Graduated(uint256 nativeAmount, uint256 vyntraAmount);
     event BuyVyntra(address indexed buyer, uint256 nativeIn, uint256 vyntraOut);
     event SellVyntra(address indexed seller, uint256 vyntraIn, uint256 nativeOut);
     event PoolFeesCollected(uint256 nativeFees, uint256 vyntraBurned);
@@ -72,67 +83,51 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
     error BadCallback();
     error BadLiquidity();
     error SendFailed();
+    error BadCurveAmount();
 
-    constructor(address vyntra_, address poolManager_) {
+    constructor(address vyntra_, address poolManager_, uint256 graduationThreshold_) {
         if (
-            vyntra_ == address(0) || poolManager_ == address(0)
-                || vyntra_.code.length == 0 || poolManager_.code.length == 0
+            vyntra_ == address(0) || poolManager_ == address(0) || vyntra_.code.length == 0
+                || poolManager_.code.length == 0 || graduationThreshold_ == 0
+                || graduationThreshold_ > 1e36
         ) revert BadConfig();
         vyntra = IERC20(vyntra_);
         poolManager = IPoolManager(poolManager_);
         owner = msg.sender;
+        graduationThreshold = graduationThreshold_;
     }
 
     receive() external payable {
         if (msg.sender != address(poolManager)) revert OnlyPoolManager();
     }
 
-    /// @notice Set the protocol fee destination once, after the fee router is deployed.
     function setFeeRecipient(address recipient) external {
         if (msg.sender != owner) revert NotOwner();
-        if (
-            initialized || feeRecipient != address(0) || recipient == address(0)
-                || recipient.code.length == 0
-        ) {
+        if (initialized || feeRecipient != address(0) || recipient == address(0) || recipient.code.length == 0) {
             revert BadConfig();
         }
         feeRecipient = recipient;
         emit FeeRecipientConfigured(recipient);
     }
 
-    /// @notice Initialize the v4 HYPE/VYNTRA pool and lock its full-range seed position.
-    /// @dev The fixed seed and token allocation atomically determine the opening price.
-    function seed(uint256 vyntraAmount) external payable nonReentrant {
+    /// @notice Open the VYNTRA curve using its fixed token allocation and no HYPE contribution.
+    function initializeCurve(uint256 vyntraAmount) external {
         if (msg.sender != owner) revert NotOwner();
         if (initialized) revert AlreadySeeded();
-        if (feeRecipient == address(0)) revert BadConfig();
-        if (msg.value < MIN_NATIVE_SEED || msg.value > MAX_NATIVE_SEED || vyntraAmount == 0) {
-            revert BadAmount();
-        }
+        if (feeRecipient == address(0) || vyntraAmount == 0) revert BadConfig();
+        (uint256 curveTokens, uint256 poolTokens) = BondingCurveMath.allocations(vyntraAmount);
+        (uint256 startPrice, uint256 endPrice) =
+            BondingCurveMath.startAndEndPriceWad(graduationThreshold, curveTokens, poolTokens);
+        if (startPrice == 0 || endPrice <= startPrice) revert BadConfig();
         if (!vyntra.transferFrom(msg.sender, address(this), vyntraAmount)) revert BadAmount();
 
         initialized = true;
-        seedBlock = block.number;
         seededVyntra = vyntraAmount;
-        initialSqrtPriceX96 = _sqrtPriceForSeed(vyntraAmount, msg.value);
-        PoolKey memory key = _poolKey();
-        poolId = key.toId();
-        poolManager.initialize(key, initialSqrtPriceX96);
-
-        bytes memory result = _unlock(abi.encode(OP_ADD_LIQUIDITY, msg.value, vyntraAmount));
-        (uint256 nativeUsed, uint256 tokenUsed, uint128 liquidity) =
-            abi.decode(result, (uint256, uint256, uint128));
-        initialLiquidity = liquidity;
-
-        uint256 tokenDust = vyntra.balanceOf(address(this));
-        if (tokenDust > 0 && !vyntra.transfer(BURN, tokenDust)) revert BadPoolDelta();
-        uint256 nativeDust = address(this).balance;
-        if (nativeDust > 0) {
-            (bool sent,) = payable(msg.sender).call{value: nativeDust}("");
-            if (!sent) revert SendFailed();
-        }
-
-        emit Seeded(nativeUsed, tokenUsed);
+        curveTokenSupply = curveTokens;
+        poolTokenAllocation = poolTokens;
+        launchBlock = block.number;
+        seedBlock = block.number;
+        emit CurveOpened(vyntraAmount, curveTokens, poolTokens, graduationThreshold);
     }
 
     function reserveNative() external view returns (uint256 nativeAmount) {
@@ -145,6 +140,7 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
 
     function getReserves() public view returns (uint256 nativeAmount, uint256 tokenAmount) {
         if (!initialized) return (0, 0);
+        if (!graduated) return (realNativeReserves, vyntra.balanceOf(address(this)));
         (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
         uint128 liquidity = poolManager.getLiquidity(poolId);
         if (sqrtPriceX96 == 0 || liquidity == 0) return (0, 0);
@@ -157,56 +153,115 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
         );
     }
 
+    function spotPriceWad() external view returns (uint256) {
+        if (!initialized) return 0;
+        if (!graduated) {
+            return BondingCurveMath.spotPriceWad(
+                graduationThreshold, curveTokenSupply, poolTokenAllocation, tokensSold
+            );
+        }
+        (uint256 nativeAmount, uint256 tokenAmount) = getReserves();
+        if (tokenAmount == 0) return 0;
+        return FullMath.mulDiv(nativeAmount, 1e18, tokenAmount);
+    }
+
+    function getProgressBps() external view returns (uint256) {
+        if (graduated) return BPS;
+        if (graduationThreshold == 0) return 0;
+        uint256 progress = FullMath.mulDiv(realNativeReserves, BPS, graduationThreshold);
+        return progress > BPS ? BPS : progress;
+    }
+
     function quoteBuyVyntra(uint256 nativeIn) public view returns (uint256 vyntraOut) {
         if (!initialized || nativeIn == 0) return 0;
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        uint128 liquidity = poolManager.getLiquidity(poolId);
-        if (sqrtPriceX96 == 0 || liquidity == 0) return 0;
-        (uint160 sqrtPriceLimitX96,) = _sqrtPriceLimits();
-        (, , vyntraOut,) = SwapMath.computeSwapStep(
-            sqrtPriceX96, sqrtPriceLimitX96, liquidity, _negativeAmount(nativeIn), POOL_FEE
+        if (graduated) return _quotePoolBuy(nativeIn);
+        uint256 netAvailable = nativeIn - FullMath.mulDiv(nativeIn, FEE_BPS, BPS);
+        uint256 remainingQuote = graduationThreshold > realNativeReserves
+            ? graduationThreshold - realNativeReserves
+            : 0;
+        if (netAvailable >= remainingQuote) return curveTokenSupply - tokensSold;
+        vyntraOut = BondingCurveMath.tokensForQuote(
+            graduationThreshold, curveTokenSupply, poolTokenAllocation, tokensSold, netAvailable
         );
-        if (block.number < seedBlock + ANTI_SNIPE_BLOCKS) {
-            uint256 earlyBuyCap = (seededVyntra * MAX_BUY_BPS_ANTI_SNIPE) / BPS;
-            if (earlyTokensBought >= earlyBuyCap || vyntraOut > earlyBuyCap - earlyTokensBought) return 0;
-        }
     }
 
     function quoteSellVyntra(uint256 vyntraIn) public view returns (uint256 nativeOut) {
         if (!initialized || vyntraIn == 0) return 0;
-        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
-        uint128 liquidity = poolManager.getLiquidity(poolId);
-        if (sqrtPriceX96 == 0 || liquidity == 0) return 0;
-        (, uint160 sqrtPriceLimitX96) = _sqrtPriceLimits();
-        (, , nativeOut,) = SwapMath.computeSwapStep(
-            sqrtPriceX96, sqrtPriceLimitX96, liquidity, _negativeAmount(vyntraIn), POOL_FEE
+        if (graduated) return _quotePoolSell(vyntraIn);
+        if (vyntraIn > tokensSold) return 0;
+        uint256 newSold = tokensSold - vyntraIn;
+        uint256 grossOut = BondingCurveMath.quoteForTokens(
+            graduationThreshold, curveTokenSupply, poolTokenAllocation, newSold, vyntraIn
         );
+        if (grossOut > realNativeReserves) grossOut = realNativeReserves;
+        nativeOut = grossOut - FullMath.mulDiv(grossOut, FEE_BPS, BPS);
     }
 
-    function buyVyntra(uint256 minVyntraOut)
-        external
-        payable
-        nonReentrant
-        returns (uint256 vyntraOut)
-    {
+    function buyVyntra(uint256 minVyntraOut) external payable nonReentrant returns (uint256 vyntraOut) {
         if (!initialized) revert NotSeeded();
         if (msg.value == 0) revert BadAmount();
-        bytes memory result = _unlock(abi.encode(OP_BUY, msg.sender, msg.value, minVyntraOut));
+
         uint256 nativeUsed;
-        (vyntraOut, nativeUsed) = abi.decode(result, (uint256, uint256));
-        if (vyntraOut < minVyntraOut) revert Slippage();
-        if (nativeUsed == 0 || vyntraOut == 0) revert BadAmount();
-        if (block.number < seedBlock + ANTI_SNIPE_BLOCKS) {
-            uint256 earlyBuyCap = (seededVyntra * MAX_BUY_BPS_ANTI_SNIPE) / BPS;
-            if (earlyTokensBought + vyntraOut > earlyBuyCap) revert BadAmount();
-            earlyTokensBought += vyntraOut;
+        uint256 valueUsed;
+        if (!graduated) {
+            uint256 grossFeeMax = FullMath.mulDiv(msg.value, FEE_BPS, BPS);
+            uint256 netAvailable = msg.value - grossFeeMax;
+            uint256 remainingQuote = graduationThreshold - realNativeReserves;
+            if (netAvailable >= remainingQuote) {
+                vyntraOut = curveTokenSupply - tokensSold;
+                nativeUsed = remainingQuote;
+            } else {
+                vyntraOut = BondingCurveMath.tokensForQuote(
+                    graduationThreshold, curveTokenSupply, poolTokenAllocation, tokensSold, netAvailable
+                );
+                if (vyntraOut == 0) revert BadAmount();
+                nativeUsed = BondingCurveMath.quoteForTokens(
+                    graduationThreshold, curveTokenSupply, poolTokenAllocation, tokensSold, vyntraOut
+                );
+            }
+            uint256 fee = _feeForNet(nativeUsed);
+            valueUsed = nativeUsed + fee;
+            while (valueUsed > msg.value && vyntraOut > 0) {
+                unchecked { --vyntraOut; }
+                if (vyntraOut == 0) revert BadAmount();
+                nativeUsed = BondingCurveMath.quoteForTokens(
+                    graduationThreshold, curveTokenSupply, poolTokenAllocation, tokensSold, vyntraOut
+                );
+                fee = _feeForNet(nativeUsed);
+                valueUsed = nativeUsed + fee;
+            }
+            if (block.number < launchBlock + ANTI_SNIPE_BLOCKS) {
+                uint256 earlyBuyCap = FullMath.mulDiv(seededVyntra, MAX_BUY_BPS_ANTI_SNIPE, BPS);
+                if (earlyTokensBought + vyntraOut > earlyBuyCap) revert BadAmount();
+                earlyTokensBought += vyntraOut;
+            }
+
+            realNativeReserves += nativeUsed;
+            tokensSold += vyntraOut;
+            protocolFees += valueUsed - nativeUsed;
+            if (!vyntra.transfer(msg.sender, vyntraOut)) revert BadPoolDelta();
+            emit BuyVyntra(msg.sender, valueUsed, vyntraOut);
+            if (tokensSold >= curveTokenSupply) _graduate();
+        } else {
+            bytes memory result = _unlock(abi.encode(OP_BUY, msg.sender, msg.value, minVyntraOut));
+            (vyntraOut, nativeUsed) = abi.decode(result, (uint256, uint256));
+            if (vyntraOut < minVyntraOut || nativeUsed == 0 || vyntraOut == 0) revert BadAmount();
+            if (block.number < launchBlock + ANTI_SNIPE_BLOCKS) {
+                uint256 earlyBuyCap = FullMath.mulDiv(seededVyntra, MAX_BUY_BPS_ANTI_SNIPE, BPS);
+                if (earlyTokensBought + vyntraOut > earlyBuyCap) revert BadAmount();
+                earlyTokensBought += vyntraOut;
+            }
+            realNativeReserves += nativeUsed;
+            valueUsed = nativeUsed;
+            emit BuyVyntra(msg.sender, nativeUsed, vyntraOut);
         }
-        uint256 refund = msg.value - nativeUsed;
+
+        if (vyntraOut < minVyntraOut) revert Slippage();
+        uint256 refund = msg.value - valueUsed;
         if (refund > 0) {
             (bool sent,) = payable(msg.sender).call{value: refund}("");
             if (!sent) revert SendFailed();
         }
-        emit BuyVyntra(msg.sender, nativeUsed, vyntraOut);
     }
 
     function sellVyntra(uint256 vyntraIn, uint256 minNativeOut)
@@ -215,61 +270,129 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
         returns (uint256 nativeOut)
     {
         if (!initialized) revert NotSeeded();
-        if (vyntraIn == 0 || !vyntra.transferFrom(msg.sender, address(this), vyntraIn)) {
-            revert BadAmount();
-        }
-        bytes memory result = _unlock(abi.encode(OP_SELL, msg.sender, vyntraIn, minNativeOut));
+        if (vyntraIn == 0 || !vyntra.transferFrom(msg.sender, address(this), vyntraIn)) revert BadAmount();
+
         uint256 tokenUsed;
-        (nativeOut, tokenUsed) = abi.decode(result, (uint256, uint256));
-        if (nativeOut < minNativeOut) revert Slippage();
-        if (nativeOut == 0 || tokenUsed == 0) revert BadAmount();
-        uint256 tokenRefund = vyntraIn - tokenUsed;
-        if (tokenRefund > 0 && !vyntra.transfer(msg.sender, tokenRefund)) revert BadPoolDelta();
+        if (!graduated) {
+            if (vyntraIn > tokensSold) revert BadCurveAmount();
+            tokenUsed = vyntraIn;
+            uint256 newSold = tokensSold - tokenUsed;
+            uint256 grossOut = BondingCurveMath.quoteForTokens(
+                graduationThreshold, curveTokenSupply, poolTokenAllocation, newSold, tokenUsed
+            );
+            if (grossOut > realNativeReserves) grossOut = realNativeReserves;
+            uint256 fee = FullMath.mulDiv(grossOut, FEE_BPS, BPS);
+            nativeOut = grossOut - fee;
+            if (nativeOut < minNativeOut || nativeOut == 0) revert Slippage();
+            tokensSold = newSold;
+            realNativeReserves -= grossOut;
+            protocolFees += fee;
+            emit SellVyntra(msg.sender, tokenUsed, nativeOut);
+        } else {
+            bytes memory result = _unlock(abi.encode(OP_SELL, msg.sender, vyntraIn, minNativeOut));
+            (nativeOut, tokenUsed) = abi.decode(result, (uint256, uint256));
+            if (nativeOut < minNativeOut || nativeOut == 0 || tokenUsed == 0) revert Slippage();
+            uint256 tokenRefund = vyntraIn - tokenUsed;
+            if (tokenRefund > 0 && !vyntra.transfer(msg.sender, tokenRefund)) revert BadPoolDelta();
+            realNativeReserves = nativeOut >= realNativeReserves ? 0 : realNativeReserves - nativeOut;
+            emit SellVyntra(msg.sender, tokenUsed, nativeOut);
+        }
+
         (bool sent,) = payable(msg.sender).call{value: nativeOut}("");
         if (!sent) revert SendFailed();
-        emit SellVyntra(msg.sender, tokenUsed, nativeOut);
     }
 
-    /// @notice Permissionlessly collect only accrued fees from the locked market position.
+    /// @notice Permissionlessly route curve fees and locked-position fees to the protocol router.
     function claimProtocolFees() external nonReentrant {
         if (!initialized) revert NotSeeded();
         if (feeRecipient == address(0)) revert BadConfig();
-        bytes memory result = _unlock(abi.encode(OP_COLLECT_FEES));
-        (uint256 nativeFees, uint256 tokenFees) = abi.decode(result, (uint256, uint256));
-        if (tokenFees > 0 && !vyntra.transfer(BURN, tokenFees)) revert BadPoolDelta();
-        if (nativeFees > 0) {
-            (bool sent,) = payable(feeRecipient).call{value: nativeFees}("");
-            if (!sent) revert SendFailed();
+        if (graduated) {
+            bytes memory result = _unlock(abi.encode(OP_COLLECT_FEES));
+            (uint256 nativeFees, uint256 tokenFees) = abi.decode(result, (uint256, uint256));
+            protocolFees += nativeFees;
+            if (tokenFees > 0 && !vyntra.transfer(BURN, tokenFees)) revert BadPoolDelta();
+            emit PoolFeesCollected(nativeFees, tokenFees);
         }
-        emit PoolFeesCollected(nativeFees, tokenFees);
+        uint256 amount = protocolFees;
+        if (amount == 0) return;
+        protocolFees = 0;
+        (bool sent,) = payable(feeRecipient).call{value: amount}("");
+        if (!sent) revert SendFailed();
     }
 
-    function poolKey() external view returns (PoolKey memory) {
-        return _poolKey();
-    }
+    function poolKey() external view returns (PoolKey memory) { return _poolKey(); }
 
     function unlockCallback(bytes calldata data) external returns (bytes memory) {
         if (msg.sender != address(poolManager)) revert OnlyPoolManager();
         uint8 operation = abi.decode(data, (uint8));
         if (!_unlockActive || operation != _expectedOperation) revert BadCallback();
         PoolKey memory key = _poolKey();
-
         if (operation == OP_ADD_LIQUIDITY) {
             (, uint256 nativeSeed, uint256 tokenSeed) = abi.decode(data, (uint8, uint256, uint256));
             return _addLiquidity(key, nativeSeed, tokenSeed);
         }
         if (operation == OP_BUY) {
-            (, address buyer, uint256 nativeIn, uint256 minOut) =
-                abi.decode(data, (uint8, address, uint256, uint256));
+            (, address buyer, uint256 nativeIn, uint256 minOut) = abi.decode(data, (uint8, address, uint256, uint256));
             return _swapBuy(key, buyer, nativeIn, minOut);
         }
         if (operation == OP_SELL) {
-            (, address seller, uint256 tokenIn, uint256 minOut) =
-                abi.decode(data, (uint8, address, uint256, uint256));
+            (, address seller, uint256 tokenIn, uint256 minOut) = abi.decode(data, (uint8, address, uint256, uint256));
             return _swapSell(key, seller, tokenIn, minOut);
         }
         if (operation == OP_COLLECT_FEES) return _collectPositionFees(key);
         revert BadCallback();
+    }
+
+    function _feeForNet(uint256 netAmount) private pure returns (uint256) {
+        if (netAmount == 0) return 0;
+        uint256 gross = FullMath.mulDivRoundingUp(netAmount, BPS, BPS - FEE_BPS);
+        while (gross - FullMath.mulDiv(gross, FEE_BPS, BPS) < netAmount) ++gross;
+        while (gross > 1 && gross - 1 - FullMath.mulDiv(gross - 1, FEE_BPS, BPS) >= netAmount) --gross;
+        return gross - netAmount;
+    }
+
+    function _graduate() private {
+        if (graduated || tokensSold < curveTokenSupply || realNativeReserves < graduationThreshold) revert BadCurveAmount();
+        graduated = true;
+        initialSqrtPriceX96 = _sqrtPriceForSeed(poolTokenAllocation, realNativeReserves);
+        PoolKey memory key = _poolKey();
+        poolId = key.toId();
+        poolManager.initialize(key, initialSqrtPriceX96);
+        bytes memory result = _unlock(abi.encode(OP_ADD_LIQUIDITY, realNativeReserves, poolTokenAllocation));
+        (uint256 nativeUsed, uint256 tokenUsed, uint128 liquidity) = abi.decode(result, (uint256, uint256, uint128));
+        initialLiquidity = liquidity;
+        realNativeReserves = nativeUsed;
+
+        uint256 dust = vyntra.balanceOf(address(this));
+        if (dust > 0 && !vyntra.transfer(BURN, dust)) revert BadPoolDelta();
+        uint256 balance = address(this).balance;
+        if (balance > protocolFees) protocolFees += balance - protocolFees;
+        emit Seeded(nativeUsed, tokenUsed);
+        emit Graduated(nativeUsed, tokenUsed);
+    }
+
+    function _quotePoolBuy(uint256 nativeIn) private view returns (uint256 vyntraOut) {
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        uint128 liquidity = poolManager.getLiquidity(poolId);
+        if (sqrtPriceX96 == 0 || liquidity == 0) return 0;
+        (uint160 sqrtPriceLimitX96,) = _sqrtPriceLimits();
+        (, , vyntraOut,) = SwapMath.computeSwapStep(
+            sqrtPriceX96, sqrtPriceLimitX96, liquidity, _negativeAmount(nativeIn), POOL_FEE
+        );
+        if (block.number < seedBlock + ANTI_SNIPE_BLOCKS) {
+            uint256 earlyBuyCap = FullMath.mulDiv(seededVyntra, MAX_BUY_BPS_ANTI_SNIPE, BPS);
+            if (earlyTokensBought >= earlyBuyCap || vyntraOut > earlyBuyCap - earlyTokensBought) return 0;
+        }
+    }
+
+    function _quotePoolSell(uint256 vyntraIn) private view returns (uint256 nativeOut) {
+        (uint160 sqrtPriceX96,,,) = poolManager.getSlot0(poolId);
+        uint128 liquidity = poolManager.getLiquidity(poolId);
+        if (sqrtPriceX96 == 0 || liquidity == 0) return 0;
+        (, uint160 sqrtPriceLimitX96) = _sqrtPriceLimits();
+        (, , nativeOut,) = SwapMath.computeSwapStep(
+            sqrtPriceX96, sqrtPriceLimitX96, liquidity, _negativeAmount(vyntraIn), POOL_FEE
+        );
     }
 
     function _addLiquidity(PoolKey memory key, uint256 nativeSeed, uint256 tokenSeed)
@@ -286,12 +409,8 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
         uint128 liquidityAmount = uint128(liquidity);
 
         for (uint256 i; i < 4; ++i) {
-            uint256 nativeRequired = SqrtPriceMath.getAmount0Delta(
-                initialSqrtPriceX96, sqrtUpper, liquidityAmount, true
-            );
-            uint256 tokenRequired = SqrtPriceMath.getAmount1Delta(
-                sqrtLower, initialSqrtPriceX96, liquidityAmount, true
-            );
+            uint256 nativeRequired = SqrtPriceMath.getAmount0Delta(initialSqrtPriceX96, sqrtUpper, liquidityAmount, true);
+            uint256 tokenRequired = SqrtPriceMath.getAmount1Delta(sqrtLower, initialSqrtPriceX96, liquidityAmount, true);
             if (nativeRequired <= nativeSeed && tokenRequired <= tokenSeed) break;
             if (liquidityAmount <= 1) revert BadLiquidity();
             unchecked { --liquidityAmount; }
@@ -299,12 +418,7 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
 
         (BalanceDelta delta,) = poolManager.modifyLiquidity(
             key,
-            ModifyLiquidityParams({
-                tickLower: tickLower,
-                tickUpper: tickUpper,
-                liquidityDelta: int256(uint256(liquidityAmount)),
-                salt: bytes32(0)
-            }),
+            ModifyLiquidityParams({tickLower: tickLower, tickUpper: tickUpper, liquidityDelta: int256(uint256(liquidityAmount)), salt: bytes32(0)}),
             ""
         );
         int128 delta0 = delta.amount0();
@@ -326,7 +440,6 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
         private
         returns (bytes memory)
     {
-        if (poolManager.getLiquidity(poolId) == 0) revert NotSeeded();
         (uint160 sqrtPriceLimitX96,) = _sqrtPriceLimits();
         BalanceDelta delta = poolManager.swap(
             key,
@@ -339,7 +452,6 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
         uint256 nativeUsed = uint256(uint128(delta0));
         uint256 tokensOut = uint256(uint128(-delta1));
         if (tokensOut < minOut || tokensOut == 0) revert Slippage();
-
         poolManager.sync(key.currency0);
         poolManager.settle{value: nativeUsed}();
         poolManager.take(key.currency1, buyer, tokensOut);
@@ -363,7 +475,6 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
         uint256 nativeOut = uint256(uint128(-delta0));
         uint256 tokensUsed = uint256(uint128(delta1));
         if (nativeOut < minOut || tokensUsed == 0) revert Slippage();
-
         poolManager.sync(key.currency1);
         if (!vyntra.transfer(address(poolManager), tokensUsed)) revert BadPoolDelta();
         poolManager.settle();
@@ -427,20 +538,12 @@ contract VyntraMarket is ReentrancyGuard, IUnlockCallback {
         return uint160(root);
     }
 
-    function _liquidityForAmount0(uint160 sqrtA, uint160 sqrtB, uint256 amount0)
-        private
-        pure
-        returns (uint256)
-    {
+    function _liquidityForAmount0(uint160 sqrtA, uint160 sqrtB, uint256 amount0) private pure returns (uint256) {
         uint256 intermediate = FullMath.mulDiv(uint256(sqrtA), uint256(sqrtB), FixedPoint96.Q96);
         return FullMath.mulDiv(amount0, intermediate, uint256(sqrtB) - sqrtA);
     }
 
-    function _liquidityForAmount1(uint160 sqrtA, uint160 sqrtB, uint256 amount1)
-        private
-        pure
-        returns (uint256)
-    {
+    function _liquidityForAmount1(uint160 sqrtA, uint160 sqrtB, uint256 amount1) private pure returns (uint256) {
         return FullMath.mulDiv(amount1, FixedPoint96.Q96, uint256(sqrtB) - sqrtA);
     }
 

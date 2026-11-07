@@ -9,7 +9,7 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from 'wagmi'
-import { parseEther, decodeEventLog, zeroAddress } from 'viem'
+import { decodeEventLog, zeroAddress } from 'viem'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Rocket, Sparkles, Info, ExternalLink } from 'lucide-react'
 import { ImageUpload } from '../components/ImageUpload'
@@ -17,7 +17,6 @@ import { spawnFactoryAbi } from '../lib/abis'
 import { activeChain } from '../lib/chains'
 import { explorerTx, FACTORY_ADDRESS } from '../lib/config'
 import { formatUserError } from '../lib/errors'
-import { HypeUsd } from '../components/HypeUsd'
 
 export function Spawn() {
   const navigate = useNavigate()
@@ -29,7 +28,6 @@ export function Spawn() {
   const [symbol, setSymbol] = useState('')
   const [imageURI, setImageURI] = useState('')
   const [description, setDescription] = useState('')
-  const [initialLiquidity, setInitialLiquidity] = useState('5')
   const [agentMode, setAgentMode] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [findingAddress, setFindingAddress] = useState(false)
@@ -67,25 +65,8 @@ export function Spawn() {
     if (!trimmedDesc) return 'Description is required — tell the story of this coin.'
     if (nameTaken) return `Name "${trimmedName}" is already taken — pick a different name.`
     if (symbolTaken) return `Ticker $${trimmedSymbol.toUpperCase()} is already taken — change the symbol.`
-    let seedWei = 0n
-    try {
-      seedWei = parseEther(initialLiquidity)
-    } catch {
-      return 'Enter a valid HYPE amount with at most 18 decimal places.'
-    }
-    if (seedWei < parseEther('5') || seedWei > parseEther('100')) {
-      return 'Initial locked liquidity must be between 5 and 100 HYPE.'
-    }
     return null
-  }, [
-    trimmedName,
-    trimmedSymbol,
-    trimmedImage,
-    trimmedDesc,
-    nameTaken,
-    symbolTaken,
-    initialLiquidity,
-  ])
+  }, [trimmedName, trimmedSymbol, trimmedImage, trimmedDesc, nameTaken, symbolTaken])
 
   const canSubmit = !validationError
 
@@ -166,7 +147,7 @@ export function Spawn() {
           0n,
           tokenSalt,
         ],
-        value: parseEther(initialLiquidity),
+        value: 0n,
         chainId: activeChain.id,
       })
     } catch (launchError) {
@@ -183,8 +164,8 @@ export function Spawn() {
           <p className="page-kicker mb-2">Create</p>
           <h1 className="page-title text-4xl sm:text-5xl lg:text-6xl">Launch a coin</h1>
           <p className="mt-3 max-w-md text-base text-[var(--vyntra-muted)] sm:text-lg">
-            Launch directly into a no-hook Uniswap v4 HYPE pool. All 1B tokens enter a full-range
-            position that cannot be removed; the 1% pool fee is shared with the creator.
+            Launch on a buyer-funded curve with no HYPE liquidity deposit. When it fills, the
+            contract creates a permanently locked Uniswap v4 pool from the HYPE raised.
           </p>
           <p className="mt-2 max-w-md text-sm text-[var(--vyntra-muted)]">
             Every Vyntra token contract ends in <span className="font-mono font-semibold">7f7</span> for quick identification.
@@ -246,25 +227,16 @@ export function Spawn() {
             </p>
           </Field>
 
-          <Field label="Initial locked liquidity (HYPE) *">
-            <input
-              className="input font-mono"
-              type="number"
-              min="5"
-              max="100"
-              step="0.001"
-              value={initialLiquidity}
-              onChange={(e) => setInitialLiquidity(e.target.value)}
-              required
-            />
-            <HypeUsd value={Number(initialLiquidity) || 0} className="text-xs text-[var(--vyntra-faint)]" />
-            <p className="mt-1.5 flex items-start gap-1.5 text-xs text-[var(--vyntra-faint)]">
-              <Info className="mt-0.5 h-3 w-3 shrink-0" />
-              This HYPE and the full token supply are deposited atomically. The 5 HYPE minimum
-              sets a liquidity floor; the seed and fixed supply determine the opening price.
-              Buys are capped at 2% of supply in total during the first three blocks.
+          <div className="rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-4">
+            <p className="flex items-center gap-2 text-sm font-semibold text-[var(--vyntra-fg)]">
+              <Info className="h-4 w-4" /> No HYPE deposit required
             </p>
-          </Field>
+            <p className="mt-1.5 text-sm leading-relaxed text-[var(--vyntra-muted)]">
+              Token creation uses HYPE only for network gas. Buyers fund the curve through trades.
+              At graduation, 40% of supply joins the collected HYPE in the locked V4 pool; the
+              remaining 60% is sold through the curve. You can choose to buy after launch.
+            </p>
+          </div>
 
           <button
             type="button"
@@ -377,10 +349,10 @@ export function Spawn() {
             <div className="flex flex-wrap gap-2">
               <span className="chip">1B supply</span>
               <span className="chip">Address ends 7f7</span>
-              <span className="chip">Uniswap v4 · no hook</span>
-              <span className="chip">1% LP fee</span>
-              <span className="chip">LP locked forever</span>
-              <span className="chip">Opening price bounded</span>
+              <span className="chip">Curve → Uniswap v4</span>
+              <span className="chip">1% trade fee</span>
+              <span className="chip">V4 position locks at graduation</span>
+              <span className="chip">Published curve pricing</span>
               <span className="chip-live">{activeChain.testnet ? 'Testnet' : 'Mainnet'}</span>
               {agentMode && <span className="chip-demo">Agent</span>}
             </div>

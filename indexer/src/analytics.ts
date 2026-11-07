@@ -68,7 +68,7 @@ function concentration(balances: number[], circ: number, n: number): number {
   return (sum / circ) * 100
 }
 
-/** Net curve positions from Buy/Sell events (pre-migration approximation). */
+/** Net positions estimated from the market's Buy/Sell event stream. */
 export async function getHolders(
   launchId: number,
   limit = 100,

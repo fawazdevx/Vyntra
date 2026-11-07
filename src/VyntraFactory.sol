@@ -11,22 +11,19 @@ interface IVyntraMarketDeployer {
         uint256 graduationThreshold,
         uint256 totalSupply,
         address splitter,
-        address poolManager,
-        uint256 minInitialLiquidity,
-        uint256 maxInitialLiquidity
+        address poolManager
     ) external returns (address market);
 }
 
 interface IVyntraLaunchMarket {
-    function initializePool() external payable;
+    function initializeCurve() external;
+    function buyFor(address beneficiary, uint256 minTokensOut, address referrer) external payable returns (uint256);
 }
 
 /// @title VyntraFactory
-/// @notice Coordinates fixed-supply launches into Vyntra's no-hook Uniswap v4 markets.
+/// @notice Coordinates no-fee, buyer-funded launches that graduate into locked Uniswap v4 pools.
 contract VyntraFactory {
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 ether;
-    uint256 public constant MIN_LAUNCH_LIQUIDITY = 5 ether;
-    uint256 public constant MAX_LAUNCH_LIQUIDITY = 100 ether;
     uint160 public constant VANITY_SUFFIX = 0x7f7;
 
     address public owner;
@@ -83,7 +80,7 @@ contract VyntraFactory {
     error VanitySaltNotFound();
     error TaxesDisabled();
     error MigrationDisabled();
-    error BadInitialLiquidity();
+    error BadThreshold();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -103,6 +100,7 @@ contract VyntraFactory {
         ) {
             revert ZeroAddress();
         }
+        if (graduationThreshold_ == 0 || graduationThreshold_ > 1e36) revert BadThreshold();
         owner = msg.sender;
         protocolTreasury = protocolTreasury_;
         graduationThreshold = graduationThreshold_;
@@ -112,7 +110,7 @@ contract VyntraFactory {
 
     receive() external payable {}
 
-    /// @notice Launch a fixed-supply token directly into a locked Uniswap v4 HYPE pool.
+    /// @notice Launch a fixed-supply token on a buyer-funded curve, then graduate it into locked V4 liquidity.
     /// @dev Requires non-empty imageURI and description. Name/symbol must be unique (case-insensitive).
     ///      Legacy tax arguments must be zero; v4 pools use the fixed LP fee, with no custom hook.
     function spawn(
@@ -179,7 +177,7 @@ contract VyntraFactory {
         string calldata symbol,
         string calldata imageURI,
         string calldata description,
-        address,
+        address referrer,
         uint256 buyTaxBps,
         uint256 sellTaxBps,
         uint256 fundsBps,
@@ -197,10 +195,6 @@ contract VyntraFactory {
             buyTaxBps != 0 || sellTaxBps != 0 || fundsBps != 0 || buybackBps != 0
                 || dividendsBps != 0 || liquidityBps != 0
         ) revert TaxesDisabled();
-        if (msg.value < MIN_LAUNCH_LIQUIDITY || msg.value > MAX_LAUNCH_LIQUIDITY) {
-            revert BadInitialLiquidity();
-        }
-
         bytes32 nameKey = _nameKey(name);
         bytes32 symbolKey = _symbolKey(symbol);
         if (nameToId[nameKey] != 0) revert NameTaken();
@@ -229,14 +223,12 @@ contract VyntraFactory {
             graduationThreshold,
             TOTAL_SUPPLY,
             splitter_,
-            poolManager,
-            MIN_LAUNCH_LIQUIDITY,
-            MAX_LAUNCH_LIQUIDITY
+            poolManager
         );
 
         vyntraToken.setCurve(curve);
         require(vyntraToken.transfer(curve, TOTAL_SUPPLY), "SEED");
-        IVyntraLaunchMarket(curve).initializePool{value: msg.value}();
+        IVyntraLaunchMarket(curve).initializeCurve();
 
         uint256 id = ++launchCount;
         launches[id] = Launch(token, curve, creator_, splitter_, name, symbol, block.timestamp);
@@ -246,6 +238,12 @@ contract VyntraFactory {
         symbolToId[symbolKey] = id;
 
         emit TokenSpawned(id, token, curve, creator_, splitter_, name, symbol, imageURI);
+
+        // A creator may include an optional first buy. Zero-value creation is the default and
+        // requires only transaction gas; any value sent buys tokens for the creator.
+        if (msg.value > 0) {
+            IVyntraLaunchMarket(curve).buyFor{value: msg.value}(creator_, 0, referrer);
+        }
 
         uint256 refund = address(this).balance - balanceBefore;
         if (refund > 0) {
@@ -313,6 +311,7 @@ contract VyntraFactory {
     }
 
     function setGraduationThreshold(uint256 threshold) external onlyOwner {
+        if (threshold == 0 || threshold > 1e36) revert BadThreshold();
         graduationThreshold = threshold;
         emit ThresholdUpdated(threshold);
     }

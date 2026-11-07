@@ -31,9 +31,9 @@
 
 <br/>
 
-> **Vyntra is a permissionless launchpad on Elysium Testnet.** Each token launches directly into a HYPE-paired Uniswap v4 pool. The pool uses no custom hook, its full-range liquidity position cannot be withdrawn, and graduation records progress without moving liquidity. Protocol revenue supports `$VYNTRA` buybacks.
+> **Vyntra is a permissionless launchpad on Elysium Testnet.** Creators launch with no HYPE liquidity deposit or platform launch fee. Buyers trade against a published HYPE curve; at graduation, the remaining token allocation and raised HYPE initialize a no-hook Uniswap v4 pool with a permanently locked Vyntra position. Protocol revenue supports `$VYNTRA` buybacks.
 
-The factory creates each token, initializes its pool, and deposits the full token supply plus the creator's HYPE seed in one transaction. The opening price is derived from those amounts. Seeds are bounded to 5–100 HYPE, and aggregate buys during the first three blocks cannot exceed 2% of token supply.
+Each 1 billion token supply is split into a 60% curve sale and 40% pool allocation. The linear curve starts at one third of the terminal pool price; buyer HYPE builds the graduation reserve. The first three blocks cap aggregate buys at 2% of token supply. A creator can optionally include an opening buy, but creation itself requires only network gas.
 
 ---
 
@@ -44,7 +44,7 @@ Most launchpads either abandon traders after graduation or skim fees with no cle
 Vyntra answers:
 
 - Can anyone launch with required image, description, and a unique ticker?
-- Does the same pool keep trading after the graduation milestone?
+- Does a curve graduate automatically into a permanently locked liquidity pool?
 - Can the locked liquidity position be withdrawn by an owner or admin?
 - Do creators earn a clear share of collected pool fees?
 - Does protocol revenue strengthen a fixed-supply platform token?
@@ -52,10 +52,10 @@ Vyntra answers:
 ```mermaid
 flowchart LR
     C["Creator"] --> F["VyntraFactory.spawn"]
-    F --> T["Token + no-hook v4 pool + locked position"]
+    F --> T["Token + buyer-funded curve"]
     TR["Traders"] --> X["Buy / sell with HYPE"]
     X --> G{"Graduation threshold"}
-    G -->|reached| A["Graduated · same v4 pool stays live"]
+    G -->|reached| A["Graduated · HYPE + remaining tokens initialize locked v4 pool"]
     X --> R["FeeRouter"]
     R --> V["BuybackVault"]
     V --> Burn["Buy $VYNTRA → burn"]
@@ -66,27 +66,27 @@ flowchart LR
 ## ⬡ How a launch works
 
 ```text
-Creator uploads image + metadata and chooses a 5–100 HYPE seed
+Creator uploads image + metadata and pays network gas
         │
         ▼
  VyntraFactory.spawn()
   · mints VyntraToken (1B fixed)
   · deploys VyntraCurve market adapter
-  · initializes a no-hook Uniswap v4 HYPE pool
-  · deposits all 1B tokens and the HYPE seed atomically
+  · assigns 600M tokens to the curve and 400M to graduation liquidity
+  · opens trading without a creator-supplied HYPE reserve
         │
         ▼
- Traders buy/sell with HYPE
-  · 1% Uniswap v4 pool fee
+ Traders buy/sell with HYPE on the curve
+  · 1% fee shared by creator and protocol
   · aggregate first-three-block buys capped at 2% of supply
         │
         ▼
  Net HYPE buys ≥ graduation threshold
         │
         ▼
- Graduated · the same v4 pool stays open
-  · graduation does not move liquidity or change the trading venue
-  · the market contract has no liquidity-removal or position-transfer function
+ Graduated · curve reserve + 400M pool allocation initialize V4
+  · transition occurs atomically with the final curve buy
+  · Vyntra's full-range V4 position has no removal or transfer function
 ```
 
 ### Recognizable token addresses
@@ -95,24 +95,25 @@ The factory deploys every launch token with CREATE2 and requires the address to 
 
 ### Pool launch
 
-Each launch creates a no-hook Uniswap v4 pool paired with native HYPE. The full-range position is owned by the market adapter and is initialized in the same transaction as the token. The starting price follows the fixed token supply and selected HYPE seed; the factory enforces the 5–100 HYPE bounds and the launch form shows the required seed before signing.
+Each launch starts on a linear HYPE bonding curve calibrated to raise the configured net-HYPE graduation target across its 600M-token sale allocation. Its starting price is one third of the terminal pool price. The remaining 400M tokens are held for graduation. When the curve sells its allocation and reaches the target, the market initializes a no-hook Uniswap v4 pool using the collected HYPE and reserved tokens; its full-range position cannot be withdrawn.
 
 ### Graduation
 
-When net HYPE buys reach the configured threshold, the market marks graduated. Trading continues in that same pool; there is no curve-to-pool migration.
+The final curve buy triggers graduation and pool initialization in one transaction. If initialization fails, that buy reverts. Trading then uses the newly initialized V4 pool. This automatic transition avoids a separate manual migration transaction, but it remains custom contract logic that needs review and testing.
 
 ### Launch requirements
 
 - Image (upload or URL) and description — empty values revert on-chain
 - Unique name and unique symbol (case-insensitive)
-- Initial locked liquidity: 5–100 HYPE
-- Wallet on Elysium Testnet with gas
+- No creator liquidity deposit or platform launch fee
+- Wallet on Elysium Testnet with HYPE for network gas
+- Optional HYPE opening buy, if the creator chooses to buy their own token
 
 ---
 
 ## ◎ Fee model
 
-Every swap pays the pool's fixed **1% Uniswap v4 fee**. Uniswap v4 accrues fees to the locked position. When collected:
+Curve buys and sells pay a **1% trade fee**. After graduation, swaps pay the pool's fixed **1% Uniswap v4 fee**. Curve fees are split equally; V4 fees accrue to the locked position and are split when collected:
 
 ```text
 HYPE-denominated LP fees
@@ -135,9 +136,9 @@ Token-denominated LP fees are sent to the creator when the position fees are col
 | Supply | **1,000,000,000** fixed |
 | Role | Buyback sink for protocol revenue |
 
-Deploy seeds a HYPE/VYNTRA market. As meme volume grows, protocol fees push HYPE into that market, buy VYNTRA, and send it to the burn address.
+Deploy opens a buyer-funded HYPE/VYNTRA market. Buyers trade against a 30 million VYNTRA curve allocation; the remaining 20 million market allocation joins the raised HYPE in the locked V4 pool at graduation. The deployer supplies no HYPE seed. As meme volume grows, protocol fees push HYPE into that market, buy VYNTRA, and send it to the burn address.
 
-The deployment seeds 50 million VYNTRA (5%) into the market and places the remaining 950 million in a policy vault: 190M community and creator incentives, 142.5M ecosystem grants, and 617.5M unallocated. The treasury Safe proposes reserve actions through a 30-day timelock. Disclosed campaigns share a 50M VYNTRA rolling 365-day release cap; unclaimed tokens return to their original budget without restoring cap capacity. Protocol buybacks are limited to 0.5% of market HYPE reserves per transaction and at least six hours apart. Creators can also spend VYNTRA on labeled featured placement; those fees are sent to the burn address.
+The deployment allocates 50 million VYNTRA (5%) to its market (30M curve sale, 20M locked pool allocation at graduation) and places the remaining 950 million in a policy vault: 190M community and creator incentives, 142.5M ecosystem grants, and 617.5M unallocated. The treasury Safe proposes reserve actions through a 30-day timelock. Disclosed campaigns share a 50M VYNTRA rolling 365-day release cap; unclaimed tokens return to their original budget without restoring cap capacity. Protocol buybacks are limited to 0.5% of market HYPE reserves per transaction and at least six hours apart. Creators can also spend VYNTRA on labeled featured placement; those fees are sent to the burn address.
 
 **Intended flywheel:** more launches and volume can create more protocol revenue, paced buybacks, and token burns. This depends on actual usage; it does not guarantee token demand or price appreciation.
 
@@ -148,7 +149,7 @@ The deployment seeds 50 million VYNTRA (5%) into the market and places the remai
 | Surface | What you get |
 | --- | --- |
 | Markets | Live feed with pool progress, graduation state, and labeled featured placements |
-| Launch | Image upload, metadata, uniqueness checks, 5–100 HYPE seed |
+| Launch | Image upload, metadata, uniqueness checks, no required liquidity deposit or platform launch fee |
 | Token | Chart, buy/sell, trade tape, holders, snipers, replies, share |
 | Studio | Creator launches, pool-fee claims, keeper sweep |
 | Portfolio | Wallet positions, average-cost PnL, trade history |
@@ -160,13 +161,13 @@ The deployment seeds 50 million VYNTRA (5%) into the market and places the remai
 
 | Contract | Role |
 | --- | --- |
-| `VyntraFactory` | Enforces metadata, uniqueness, seed bounds, and vanity suffix; coordinates atomic launches |
+| `VyntraFactory` | Enforces metadata, uniqueness, graduation threshold, and vanity suffix; coordinates curve launches |
 | `VyntraMarketDeployer` | Factory-bound helper that deploys launch market adapters to keep factory bytecode deployable |
 | `VyntraToken` | Fixed-supply ERC-20 with image and description |
 | `PoolManager` | Vyntra-owned deployment of Uniswap v4 core with protocol-fee governance renounced |
-| `VyntraCurve` | No-hook v4 swaps, fee collection, early-buy cap, graduation status, permanent position custody |
+| `VyntraCurve` | Linear buyer-funded curve, automatic V4 graduation, fees, early-buy cap, permanent position custody |
 | `VYNTRA` | Platform ERC-20 |
-| `VyntraMarket` | No-hook v4 HYPE/VYNTRA pool with locked seed liquidity |
+| `VyntraMarket` | Buyer-funded VYNTRA curve that graduates into a no-hook V4 pool with locked liquidity |
 | `VyntraReserveTimelock` | 30-day public delay; sole proposer is the treasury Safe |
 | `VyntraReserveVault` | Holds the 950M reserve, tracks allocations, and enforces campaign release limits |
 | `VyntraPromotion` | Creator-paid featured placement, with VYNTRA sent to burn address |
@@ -179,12 +180,12 @@ Fairness defaults:
 
 - No team allocation; the 950M reserve starts in a policy vault split 20% incentives, 15% grants, and 65% unallocated
 - Reserve campaigns require public disclosure, a 30-day timelock, and share a 50M VYNTRA rolling 365-day cap
-- Pool initialization and seeding happen atomically; there is no public uninitialized-pool window
+- V4 pool initialization and liquidity addition happen atomically in the graduation buy; there is no public uninitialized-pool window
 - The first three blocks have a global 2% supply buy cap, not a per-wallet allowance
 - The market adapter has no function that can reduce or transfer its liquidity position
-- Other users may add and withdraw separate positions from the public v4 pool; only Vyntra's seed position is locked
-- No custom hook is installed; graduation never triggers a migration
-- The 5 HYPE minimum seed improves launch depth, but later trades can still move price or reduce one side of pool inventory
+- Other users may add and withdraw separate positions from the public v4 pool; only Vyntra's position is locked
+- No custom hook is installed; the final curve buy performs the automatic curve-to-V4 transition
+- The curve price schedule and initial-buy cap reduce launch-price discretion and early concentration; neither prevents later price movement or guarantees pool depth
 - External positions may change initialized ticks, making app quotes approximate; minimum-output limits protect each submitted trade
 - Duplicate names and tickers revert
 

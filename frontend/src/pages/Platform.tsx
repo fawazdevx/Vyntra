@@ -132,6 +132,20 @@ export function Platform() {
     query: { enabled: Boolean(VYNTRA_MARKET) },
   })
 
+  const { data: marketGraduated } = useReadContract({
+    address: VYNTRA_MARKET,
+    abi: vyntraMarketAbi,
+    functionName: 'graduated',
+    query: { enabled: Boolean(VYNTRA_MARKET), refetchInterval: 8_000 },
+  })
+
+  const { data: marketSpotPriceWad } = useReadContract({
+    address: VYNTRA_MARKET,
+    abi: vyntraMarketAbi,
+    functionName: 'spotPriceWad',
+    query: { enabled: Boolean(VYNTRA_MARKET), refetchInterval: 8_000 },
+  })
+
   const { data: reserveVyntra } = useReadContract({
     address: VYNTRA_MARKET,
     abi: vyntraMarketAbi,
@@ -231,8 +245,9 @@ export function Platform() {
     },
   })
 
-  const price =
-    reserveNative != null && reserveVyntra != null && reserveVyntra > 0n
+  const price = marketSpotPriceWad != null
+    ? Number(formatEther(marketSpotPriceWad))
+    : reserveNative != null && reserveVyntra != null && reserveVyntra > 0n
       ? Number(formatEther(reserveNative)) / Number(formatEther(reserveVyntra))
       : 0
   const spotMcap = price > 0 ? price * TOTAL_SUPPLY : trades.at(-1)?.mcap ?? 0
@@ -416,7 +431,7 @@ export function Platform() {
             sub={price > 0 ? <HypeUsd value={price} /> : null}
           />
           <Metric
-            label="Pool HYPE"
+            label={marketGraduated ? 'Pool HYPE' : 'Curve HYPE'}
             value={reserveNative != null ? formatNative(reserveNative) : '—'}
             sub={reserveNative != null ? <HypeUsd value={Number(formatEther(reserveNative))} /> : null}
           />
@@ -462,7 +477,7 @@ export function Platform() {
             <ul className="space-y-3 text-base text-[var(--vyntra-muted)]">
               <li>First market on Vyntra — trade the platform token alongside meme launches.</li>
               <li>
-                1B fixed supply: 50M seeded into the market and the remaining 950M begins in the policy vault.
+                1B fixed supply: 50M enters the public launch market (30M curve sale, 20M locked pool allocation at graduation); 950M starts in the policy vault.
               </li>
               <li>
                 Reserve vault balance: {formatVyntraAmount(reserveVaultBalance)} VYNTRA
@@ -479,9 +494,9 @@ export function Platform() {
                 Unclaimed campaign tokens return to their original budget when the claim window ends; the cap usage does not reset.
               </li>
               <li>80% of protocol fees fund capped VYNTRA buybacks; the tokens are sent to the burn address.</li>
-              <li>1% Uniswap v4 pool fee. The Vyntra seed position is permanently locked.</li>
+              <li>Curve trades pay 1%; after graduation, VYNTRA trades in a 1% Uniswap v4 pool whose initial position is permanently locked.</li>
               <li>
-                Always tradeable against HYPE in the same no-hook pool; buybacks also trade through this pool.
+                The market opens on its buyer-funded curve with no deployer HYPE seed. Public buys provide the HYPE used to graduate into V4; buybacks can run on either market stage.
               </li>
               <li>Creators can burn VYNTRA to buy a clearly labeled featured placement.</li>
             </ul>
@@ -489,7 +504,7 @@ export function Platform() {
               <AddrRow label="Token" addr={VYNTRA_TOKEN!} />
               <AddrRow label="Market" addr={VYNTRA_MARKET!} />
               {poolManager ? <AddrRow label="PoolManager" addr={poolManager} /> : null}
-              {poolId ? <Row label="Pool ID" value={<span className="break-all font-mono text-xs">{poolId}</span>} /> : null}
+              {marketGraduated && poolId ? <Row label="Pool ID" value={<span className="break-all font-mono text-xs">{poolId}</span>} /> : null}
               {BUYBACK_VAULT ? <AddrRow label="Buyback vault" addr={BUYBACK_VAULT} /> : null}
               {VYNTRA_RESERVE_TIMELOCK ? <AddrRow label="Reserve timelock" addr={VYNTRA_RESERVE_TIMELOCK} /> : null}
               {VYNTRA_RESERVE_VAULT ? <AddrRow label="Reserve policy vault" addr={VYNTRA_RESERVE_VAULT} /> : null}
@@ -604,7 +619,9 @@ export function Platform() {
             <Row label="Slippage guard" value="5%" />
             {side === 'buy' && buyQuote === 0n ? (
               <p className="text-xs text-amber-600 dark:text-amber-300">
-                Opening limit or pool depth reached. Buys share a 2% seed-supply cap for the first three blocks.
+                {marketGraduated
+                  ? 'The V4 pool may not have enough active liquidity for this amount.'
+                  : 'The curve sale limit or three-block opening buy cap may be active.'}
               </p>
             ) : null}
           </div>

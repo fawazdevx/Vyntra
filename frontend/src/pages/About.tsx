@@ -11,7 +11,7 @@ import {
 import { Link } from 'react-router-dom'
 
 const ALLOCATIONS = [
-  { name: 'Market seed', amount: '50M', total: '5%', reserve: 'In the HYPE / VYNTRA pool', color: 'bg-[var(--vyntra-primary)]' },
+  { name: 'VYNTRA market', amount: '50M', total: '5%', reserve: '30M curve sale · 20M locked pool allocation at graduation', color: 'bg-[var(--vyntra-primary)]' },
   { name: 'Community & creator incentives', amount: '190M', total: '19%', reserve: '20% of the reserve', color: 'bg-[#9c7bea]' },
   { name: 'Ecosystem grants', amount: '142.5M', total: '14.25%', reserve: '15% of the reserve', color: 'bg-[var(--vyntra-accent-2)]' },
   { name: 'Unallocated reserve', amount: '617.5M', total: '61.75%', reserve: '65% of the reserve', color: 'bg-[#d9ccef]' },
@@ -20,18 +20,18 @@ const ALLOCATIONS = [
 const PRINCIPLES = [
   {
     icon: Waves,
-    title: 'One market from launch',
-    body: 'Each creator token starts in a HYPE pool. Graduation marks a HYPE milestone; it does not migrate the token or close its pool.',
+    title: 'Buyers fund the curve',
+    body: 'A launch opens on a published price curve with no creator liquidity deposit. Public trades build the HYPE reserve toward graduation.',
   },
   {
     icon: LockKeyhole,
-    title: 'The seed position stays',
-    body: 'Vyntra’s initial full-range liquidity position has no withdrawal path. Other liquidity providers can add and remove their own positions.',
+    title: 'Vyntra liquidity stays locked',
+    body: 'At graduation, the remaining 40% allocation and raised HYPE enter a no-hook, full-range V4 position with no withdrawal path.',
   },
   {
     icon: Shield,
     title: 'A bounded opening',
-    body: 'The launch accepts 5–100 HYPE. During the first three blocks, all buyers share a 2% supply cap. It limits early concentration; it cannot prevent price swings.',
+    body: 'The linear curve sets a transparent opening price path. During the first three blocks, aggregate buys are capped at 2% of supply; this cannot prevent later price swings.',
   },
 ]
 
@@ -51,7 +51,7 @@ export function About() {
             <span className="text-[var(--vyntra-primary)]">Keep the market.</span>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-[var(--vyntra-muted)] sm:text-xl">
-            Vyntra gives creators a place to launch a token and gives traders one pool to follow from the first swap onward. When a launch reaches its graduation milestone, trading carries on in the same market.
+            Vyntra lets creators launch without supplying liquidity up front. Buyers trade on a transparent HYPE curve; at graduation, the remaining token allocation and raised HYPE initialize a permanently locked Uniswap v4 pool.
           </p>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--vyntra-faint)]">
             The Elysium deployment is still being prepared. This page describes the contracts and token policy planned for that deployment.
@@ -72,7 +72,7 @@ export function About() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--vyntra-faint)]">A launch’s trading path</p>
-                <h2 className="mt-2 font-display text-2xl font-bold tracking-tight">One pool. Every stage.</h2>
+            <h2 className="mt-2 font-display text-2xl font-bold tracking-tight">A clear path to locked liquidity.</h2>
               </div>
               <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--vyntra-elev)] text-[var(--vyntra-primary)]">
                 <Waves className="h-5 w-5" />
@@ -82,15 +82,15 @@ export function About() {
             <div className="mt-10 px-1">
               <div className="about-pool-rail"><span className="about-flow-dot" /></div>
               <div className="mt-4 grid grid-cols-3 gap-2 text-xs sm:text-sm">
-                <div><p className="font-semibold">Launch</p><p className="mt-1 text-[var(--vyntra-muted)]">HYPE pool opens</p></div>
-                <div className="text-center"><p className="font-semibold">Milestone</p><p className="mt-1 text-[var(--vyntra-muted)]">Graduation status</p></div>
-                <div className="text-right"><p className="font-semibold">Same pool</p><p className="mt-1 text-[var(--vyntra-muted)]">Trading continues</p></div>
+                <div><p className="font-semibold">Launch</p><p className="mt-1 text-[var(--vyntra-muted)]">Buyer-funded curve</p></div>
+                <div className="text-center"><p className="font-semibold">Graduation</p><p className="mt-1 text-[var(--vyntra-muted)]">HYPE + token allocation</p></div>
+                <div className="text-right"><p className="font-semibold">Uniswap v4</p><p className="mt-1 text-[var(--vyntra-muted)]">Locked pool opens</p></div>
               </div>
             </div>
 
             <div className="mt-8 border-t border-[var(--vyntra-border)] pt-5">
               <p className="text-sm leading-relaxed text-[var(--vyntra-muted)]">
-                Vyntra launches directly into Uniswap v4 with no custom hook. Graduation changes the launch’s status; it does not trigger a liquidity migration.
+                A launch starts on its curve. When the sale allocation and HYPE target are reached, the contract initializes a no-hook V4 pool and locks Vyntra’s full-range position.
               </p>
             </div>
           </div>
@@ -99,7 +99,7 @@ export function About() {
 
       <section aria-label="Vyntra launch settings" className="grid gap-px overflow-hidden rounded-xl border border-[var(--vyntra-border)] bg-[var(--vyntra-border)] sm:grid-cols-2 lg:grid-cols-4">
         <Fact value="1B" label="Fixed supply per creator token" />
-        <Fact value="1%" label="Uniswap v4 pool fee" />
+        <Fact value="1%" label="Curve and V4 trade fee" />
         <Fact value="50%" label="Of HYPE pool fees to creators" />
         <Fact value="0x7f7" label="Recognizable token suffix" />
       </section>
@@ -117,7 +117,7 @@ export function About() {
             Each launch includes a name, ticker, image, and description. Vyntra checks names and tickers for duplicates.
           </Principle>
           <Principle icon={Coins} title="Start with defined bounds">
-            Creators seed between 5 and 100 HYPE. The seed sets the opening price and funds initial pool liquidity; the contract refunds unused dust, and the factory takes no separate launch fee.
+            Creating a token requires no HYPE liquidity deposit or platform launch fee. The creator pays network gas; any HYPE sent with creation is treated as an optional first buy.
           </Principle>
           <Principle icon={Flame} title="Share trading fees">
             Creators claim half of collected HYPE fees and all fees collected in their token. The protocol receives the other half of HYPE fees.
@@ -132,9 +132,9 @@ export function About() {
         <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:gap-14">
           <div>
             <p className="page-kicker">The trading model</p>
-            <h2 className="page-title mt-2 text-3xl sm:text-4xl">Keep the seed. Keep the market open.</h2>
+            <h2 className="page-title mt-2 text-3xl sm:text-4xl">Build a market without a creator deposit.</h2>
             <p className="mt-4 leading-relaxed text-[var(--vyntra-muted)]">
-              Vyntra locks the launch’s initial full-range liquidity position. The pool keeps trading as the token grows, so graduation does not ask traders to learn a new pool or wait for a migration.
+            Each creator token has a fixed 1B supply: 600M are sold on the curve and 400M are reserved for V4 liquidity. At graduation, the contract initializes the no-hook pool from the collected HYPE and reserved tokens in the same transaction. The initial full-range position is locked.
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
@@ -268,7 +268,7 @@ function FeeFlowSimulator() {
           <p className="page-kicker">Interactive fee guide</p>
           <h2 id="fee-flow-title" className="page-title mt-2 text-3xl sm:text-4xl">Follow the HYPE fees.</h2>
           <p className="mt-4 leading-relaxed text-[var(--vyntra-muted)]">
-            Choose a market and adjust the trading volume to see where an estimated 1% pool fee goes.
+            Choose a market and adjust the trading volume to see where its estimated 1% trade fees go.
           </p>
           <div className="mt-6 inline-flex rounded-xl border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-1" role="group" aria-label="Choose a market for the fee estimate">
             <button
@@ -332,13 +332,13 @@ function FeeFlowSimulator() {
           </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
-            <FeeResult label="Estimated pool fees" value={formatHype(estimatedPoolFees)} detail="1% of selected turnover" />
+            <FeeResult label="Estimated trading fees" value={formatHype(estimatedPoolFees)} detail="1% of selected turnover" />
             <FeeResult label="Creator HYPE fees" value={formatHype(creatorFees)} detail={market === 'creator' ? '50% of HYPE fees' : 'No creator share in this market'} />
             <FeeResult label="HYPE routed to buyback vault" value={formatHype(buyback)} detail="80% of protocol HYPE fees" />
             <FeeResult label="Operations treasury" value={formatHype(operations)} detail="20% of protocol HYPE fees" />
           </div>
           <p id="fee-flow-note" className="mt-5 text-xs leading-relaxed text-[var(--vyntra-faint)]">
-            Estimate only: it applies the 1% pool fee to selected turnover. A permissionless keeper sweep collects protocol fees and routes the operations share to the TREASURY address set at deployment. Buyback HYPE stays in the vault until a safeguarded buy runs. Creator markets also send token-denominated fees to the creator; $VYNTRA market token fees are burned. Treasury revenue depends on trading activity, and test HYPE has no guaranteed dollar value.
+            Estimate only: it applies the 1% trade fee to selected turnover on either the curve or V4 market. A permissionless keeper sweep collects protocol fees and routes the operations share to the TREASURY address set at deployment. Buyback HYPE stays in the vault until a safeguarded buy runs. Creator markets also send token-denominated V4 fees to the creator; $VYNTRA market token fees are burned. Treasury revenue depends on trading activity, and test HYPE has no guaranteed dollar value.
           </p>
         </div>
       </div>

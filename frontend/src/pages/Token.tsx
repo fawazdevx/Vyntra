@@ -127,6 +127,13 @@ export function Token() {
     query: { enabled: Boolean(launch?.curve), refetchInterval: 5_000 },
   })
 
+  const { data: liveSpotPriceWad } = useReadContract({
+    address: launch?.curve,
+    abi: bondingCurveAbi,
+    functionName: 'spotPriceWad',
+    query: { enabled: Boolean(launch?.curve), refetchInterval: 5_000 },
+  })
+
   const { data: poolManager } = useReadContract({
     address: launch?.curve,
     abi: bondingCurveAbi,
@@ -141,7 +148,7 @@ export function Token() {
     query: { enabled: Boolean(launch?.curve) },
   })
 
-  // Graduation is only a status milestone; the same v4 pool continues trading.
+  // Graduation switches trading from the curve to the locked V4 pool.
   const isGraduated = liveGraduated === true || launch?.graduated === true
   const isMigrated = liveMigrated === true || launch?.migrated === true
   const externalPair =
@@ -201,12 +208,16 @@ export function Token() {
   const progress = launch ? Math.min(100, launch.progressBps / 100) : 0
 
   const spot = useMemo(() => {
+    if (liveSpotPriceWad != null && liveSpotPriceWad > 0n) {
+      const price = Number(formatEther(liveSpotPriceWad))
+      return { price, mcap: price * 1_000_000_000 }
+    }
     if (!reserves) return null
     const [nativeR, tokR] = reserves
     if (tokR === 0n) return null
     const price = Number(formatEther(nativeR)) / Number(formatEther(tokR))
     return { price, mcap: price * 1_000_000_000 }
-  }, [reserves])
+  }, [liveSpotPriceWad, reserves])
 
   const lastTrade = trades.length ? trades[trades.length - 1] : null
   const prevTrade = trades.length > 1 ? trades[trades.length - 2] : null
@@ -282,8 +293,12 @@ export function Token() {
     }
     if (quote === 0n) {
       setMsg(side === 'buy'
-        ? 'This buy exceeds the opening limit or available pool depth. Reduce the amount or try again later.'
-        : 'There is not enough pool depth for this sell amount.')
+        ? isGraduated
+          ? 'The V4 pool may not have enough active liquidity for this buy. Reduce the amount or try again.'
+          : 'This buy exceeds the opening limit or available curve inventory. Reduce the amount or try again later.'
+        : isGraduated
+          ? 'The V4 pool may not have enough active liquidity for this sell amount.'
+          : 'There is not enough HYPE in the curve reserve for this sell amount.')
       return
     }
     const minReceived = minimumReceived(quote, slippageBps)
@@ -506,8 +521,8 @@ export function Token() {
               <div className="mb-4 space-y-3 rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] px-4 py-3 text-sm">
                 <div className="font-semibold text-[var(--vyntra-fg)]">Trading closed on Vyntra</div>
                 <p className="leading-relaxed text-[var(--vyntra-muted)]">
-                  This legacy launch moved its liquidity out of its Vyntra market. New launches keep
-                  trading in their original locked Uniswap v4 pool.
+                  This legacy launch moved its liquidity outside Vyntra. New launches move from
+                  their curve to a locked Uniswap v4 pool at graduation and remain tradable here.
                 </p>
                 {externalPair !== zeroAddress && (
                   <p className="font-mono text-xs text-[var(--vyntra-faint)]">
@@ -557,9 +572,9 @@ export function Token() {
               </div>
             ) : isGraduated ? (
               <div className="mb-4 space-y-2 rounded-lg border border-[rgba(15,122,78,0.3)] bg-[rgba(15,122,78,0.08)] px-4 py-3 text-sm text-[var(--vyntra-success)]">
-                <div className="font-semibold">Graduated — pool stays live</div>
+                <div className="font-semibold">Graduated — locked V4 pool is live</div>
                 <p className="leading-relaxed opacity-90">
-                  The launch goal is a status milestone. Trading continues in this same permanently locked Uniswap v4 pool.
+                  The curve is complete. Trading continues in the no-hook Uniswap v4 pool, and Vyntra cannot withdraw its initial position.
                 </p>
               </div>
             ) : null}
@@ -612,7 +627,7 @@ export function Token() {
             </div>
 
             <div className="mt-4 space-y-2 rounded-xl border border-white/[0.06] bg-black/35 px-4 py-3.5 text-sm">
-              <Row label="Uniswap v4 pool fee" value="1.00%" />
+              <Row label={isGraduated ? 'Uniswap v4 pool fee' : 'Curve trading fee'} value="1.00%" />
               <div className="flex flex-wrap items-center justify-between gap-2 py-1">
                 <span className="text-zinc-500">Max slippage</span>
                 <div className="flex gap-1.5">
@@ -635,7 +650,7 @@ export function Token() {
               </div>
               {side === 'buy' && buyQuote?.[0] === 0n && (
                 <p className="text-xs text-amber-300">
-                  Opening limit or pool depth reached. Early buys share a 2% supply cap for the first three blocks.
+                  Curve supply or launch limit reached. Early buys share a 2% supply cap for the first three blocks.
                 </p>
               )}
               {hasTax && (
@@ -731,7 +746,7 @@ export function Token() {
               <AddrRow label="Token" addr={launch.token} />
               <AddrRow label="Market" addr={launch.curve} />
               {poolManager && <AddrRow label="PoolManager" addr={poolManager} />}
-              {poolId && <PoolIdRow value={poolId} copied={copied} onCopy={() => void copyAddr(poolId)} />}
+              {isGraduated && poolId && <PoolIdRow value={poolId} copied={copied} onCopy={() => void copyAddr(poolId)} />}
               <AddrRow label="Creator" addr={launch.creator} />
             </div>
           </div>

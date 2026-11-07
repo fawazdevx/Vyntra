@@ -75,6 +75,7 @@ Prepared trades include a quote-derived minimum output and an unsigned transacti
 
 - The agent must show the network, contract, asset amount, quote, minimum output, and approval to the user before any wallet action.
 - The MCP server does not request or store seed phrases or private keys, and cannot sign, submit, or fund transactions.
+- A launch requires no HYPE liquidity deposit or platform launch fee. The wallet needs HYPE for gas; any value explicitly sent with the factory call is an optional creator buy.
 - The indexer can lag the chain. Verify recent transactions in the Elysium explorer.
 - Testnet HYPE has no guaranteed dollar value.
 

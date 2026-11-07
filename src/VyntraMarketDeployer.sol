@@ -33,9 +33,7 @@ contract VyntraMarketDeployer {
         uint256 graduationThreshold,
         uint256 totalSupply,
         address splitter,
-        address poolManager,
-        uint256 minInitialLiquidity,
-        uint256 maxInitialLiquidity
+        address poolManager
     ) external returns (address market) {
         if (msg.sender != factory || factory == address(0)) revert NotFactory();
         market = address(
@@ -47,9 +45,7 @@ contract VyntraMarketDeployer {
                 graduationThreshold,
                 totalSupply,
                 splitter,
-                poolManager,
-                minInitialLiquidity,
-                maxInitialLiquidity
+                poolManager
             )
         );
     }

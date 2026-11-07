@@ -27,18 +27,18 @@ function formatVolume(value: number) {
 const FEATURES = [
   {
     icon: Flame,
-    title: 'Direct Uniswap v4 launches',
-    body: 'Each fixed 1B supply launches atomically into a no-hook HYPE pool with a bounded opening price.',
+    title: 'Buyer-funded launches',
+    body: 'Every fixed 1B supply starts on a published HYPE curve. Creators do not have to deposit liquidity to launch.',
   },
   {
     icon: Lock,
-    title: 'One pool, permanently locked',
-    body: 'The full-range position has no withdrawal path. Graduation marks progress; trading stays in the same pool.',
+    title: 'Graduation to locked V4',
+    body: 'At the HYPE target, the remaining allocation enters a no-hook Uniswap v4 pool with a permanently locked Vyntra position.',
   },
   {
     icon: Coins,
     title: 'Creators earn',
-    body: 'The 1% pool fee is collected from the locked position; creators can claim half of HYPE fees.',
+    body: 'Curve and V4 trades charge 1%; creators can claim half of collected HYPE fees from launch markets.',
   },
   {
     icon: Zap,
@@ -49,8 +49,8 @@ const FEATURES = [
 
 const STEPS = [
   { n: '01', title: 'Get test HYPE', body: 'Request test HYPE from the Elysium faucet for gas and trading.', to: '/bridge' },
-  { n: '02', title: 'Trade $VYNTRA', body: 'Buy the platform token on the seeded market.', to: '/vyntra' },
-  { n: '03', title: 'Launch or trade', body: 'Spawn a meme with image + story, or trade live HYPE pools.', to: '/markets' },
+  { n: '02', title: 'Trade $VYNTRA', body: 'Buy the platform token on its buyer-funded market.', to: '/vyntra' },
+  { n: '03', title: 'Launch or trade', body: 'Create a token or trade live HYPE markets.', to: '/markets' },
 ]
 
 const TICKER_ITEMS = [
@@ -148,8 +148,8 @@ export function Landing() {
                 </span>
               </h1>
               <p className="mt-6 max-w-xl text-lg leading-relaxed text-[var(--vyntra-muted)] sm:text-xl">
-                Permissionless launches planned for Elysium Testnet. Direct HYPE pools, locked liquidity, creator fees, and a
-                platform token that absorbs protocol volume.
+                Permissionless launches planned for Elysium Testnet. Buyer-funded curves, locked V4 liquidity at graduation, creator fees, and a
+                platform token connected to protocol revenue.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link to="/markets" className="btn-primary text-base">
@@ -166,7 +166,7 @@ export function Landing() {
                 </Link>
               </div>
               <div className="mt-10 grid max-w-lg grid-cols-3 gap-4">
-                <Stat label="Pool fee" value="1%" />
+                <Stat label="Trade fee" value="1%" />
                 <Stat label="To creators" value="50%" />
                 <Stat label="Supply" value="1B" />
               </div>
@@ -192,9 +192,9 @@ export function Landing() {
               <div className="absolute -bottom-4 -left-4 hidden rounded-xl border border-[var(--vyntra-border)] bg-[var(--vyntra-card)] px-4 py-3 shadow-lg sm:block">
                 <div className="flex items-center gap-2 text-sm font-semibold">
                   <Shield className="h-4 w-4 text-[var(--vyntra-primary)]" />
-                  Locked liquidity
+                  Locked at graduation
                 </div>
-                <p className="mt-1 text-xs text-[var(--vyntra-muted)]">Pool position cannot be withdrawn</p>
+                <p className="mt-1 text-xs text-[var(--vyntra-muted)]">Vyntra cannot withdraw its V4 position</p>
               </div>
             </div>
           </div>

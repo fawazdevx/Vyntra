@@ -93,7 +93,7 @@ async function fetchPlatformTrades(
   return trades
 }
 
-/** Trade history for the seeded HYPE/VYNTRA market (chart + tape). */
+/** Trade history for the buyer-funded HYPE/VYNTRA market (chart + tape). */
 export function usePlatformTrades(market?: Address) {
   const publicClient = usePublicClient()
   const enabled = Boolean(market && publicClient)

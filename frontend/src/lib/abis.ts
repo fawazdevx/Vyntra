@@ -317,6 +317,13 @@ export const bondingCurveAbi = [
   },
   {
     type: 'function',
+    name: 'spotPriceWad',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    type: 'function',
     name: 'tokensSold',
     stateMutability: 'view',
     inputs: [],
@@ -695,6 +702,27 @@ export const erc20Abi = [
 ] as const
 
 export const vyntraMarketAbi = [
+  {
+    type: 'function',
+    name: 'graduated',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'bool' }],
+  },
+  {
+    type: 'function',
+    name: 'getProgressBps',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'spotPriceWad',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
   {
     type: 'function',
     name: 'poolManager',

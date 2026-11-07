@@ -37,8 +37,8 @@ const docPages: DocPage[] = [
         title: 'The quick picture',
         body: (
           <>
-            <p>Vyntra is a token launchpad on Kinetiq Elysium Testnet. New tokens open directly in a HYPE-paired Uniswap v4 pool. The pool has no custom hook, and Vyntra&apos;s initial liquidity position has no withdrawal function.</p>
-            <p>Graduation records that a launch has reached its configured HYPE threshold. Trading stays in the same pool; graduation does not move tokens or liquidity to another venue.</p>
+            <p>Vyntra is a token launchpad on Kinetiq Elysium Testnet. Each launch starts on a buyer-funded HYPE bonding curve. Creators do not need to deposit liquidity or pay a platform launch fee; they need HYPE only for network gas unless they choose to make an optional first buy.</p>
+            <p>When the curve sells its 60% allocation and reaches the configured HYPE target, the remaining 40% and raised HYPE initialize a no-hook Uniswap v4 pool. Vyntra&apos;s full-range position has no withdrawal function.</p>
           </>
         ),
       },
@@ -47,7 +47,7 @@ const docPages: DocPage[] = [
         body: (
           <div className="grid gap-3 sm:grid-cols-2">
             <DocLink to="/markets" title="Browse markets" text="Review launch details, charts, pool progress, and trades." />
-            <DocLink to="/spawn" title="Launch a token" text="Prepare a HYPE seed and create a new market." />
+            <DocLink to="/spawn" title="Launch a token" text="Create a token without a liquidity deposit or platform fee." />
             <DocLink to="/vyntra" title="Read about $VYNTRA" text="See the platform-token market and reserve information." />
             <DocLink to="/docs/agents-mcp" title="Use an AI agent" text="Connect the Vyntra MCP server for reads and unsigned transaction preparation." />
           </div>
@@ -55,7 +55,7 @@ const docPages: DocPage[] = [
       },
       {
         title: 'Before you confirm',
-        body: <Callout title="Testnet means test assets" tone="amber">Elysium Testnet uses HYPE for gas and liquidity. Testnet HYPE has no guaranteed dollar value. Check the network, contract address, seed amount, and minimum output in your wallet before signing.</Callout>,
+        body: <Callout title="Testnet means test assets" tone="amber">Elysium Testnet uses HYPE for gas and trading. Testnet HYPE has no guaranteed dollar value. Check the network, contract address, optional buy amount, and minimum output in your wallet before signing.</Callout>,
       },
     ],
   },
@@ -88,24 +88,24 @@ const docPages: DocPage[] = [
     slug: 'launch',
     group: 'Use Vyntra',
     title: 'Launch a token',
-    summary: 'What you choose at launch, what the contract does, and what your HYPE seed means.',
-    keywords: 'create launch seed liquidity 1 billion token 7f7 creator image',
+    summary: 'Create a token without a liquidity deposit, then let buyers fund its curve.',
+    keywords: 'create launch curve liquidity deposit launch fee 1 billion token 7f7 creator image',
     sections: [
       {
         title: 'What you need',
-        body: <ul><li>A unique name and ticker.</li><li>An image URI and a non-empty description.</li><li>Between 5 and 100 HYPE for initial liquidity, plus HYPE for transaction gas.</li><li>A wallet connected to Elysium Testnet.</li></ul>,
+        body: <ul><li>A unique name and ticker.</li><li>An image URI and a non-empty description.</li><li>HYPE for network gas. No HYPE liquidity deposit or Vyntra launch fee is required.</li><li>A wallet connected to Elysium Testnet.</li></ul>,
       },
       {
         title: 'What launch does',
-        body: <p>The factory creates a fixed-supply token, initializes its no-hook Uniswap v4 HYPE pool, and deposits the token supply and your HYPE seed atomically. The starting price follows the ratio between the seed and token supply. Each new token address must end in <code>7f7</code>; the factory checks this on-chain.</p>,
+        body: <p>The factory creates a fixed 1 billion token supply and opens a linear HYPE curve: 600 million tokens are offered to buyers and 400 million are reserved for the graduation pool. The curve begins at one third of its terminal price and rises smoothly; when its sale allocation is exhausted, the raised HYPE and reserved tokens initialize a no-hook Uniswap v4 pool in the same transaction. The Vyntra position is locked. Each new token address must end in <code>7f7</code>; the factory checks this on-chain.</p>,
       },
       {
-        title: 'The seed is liquidity',
-        body: <p>Your HYPE seed is placed into the launch pool; it is not a refundable deposit. The Vyntra market adapter cannot withdraw or transfer its initial position. Other participants can create their own positions in the public pool and control those separately.</p>,
+        title: 'No required opening buy',
+        body: <p>Creating a token costs network gas only. HYPE sent with the factory call is treated as an optional first buy for the creator, and any amount beyond the curve&apos;s remaining capacity is refunded. Public buyers fund the curve; the creator does not have to provide the graduation liquidity.</p>,
       },
       {
         title: 'Taxes and launch settings',
-        body: <p>The current Elysium deployment has creator buy and sell taxes disabled. The launch form does not ask you to set a tax split. The fixed pool fee is 1%; fee distribution is described in <Link to="/docs/fees" className="doc-inline-link">Fees and rewards</Link>.</p>,
+        body: <p>The current Elysium deployment has creator buy and sell taxes disabled. Curve buys and sells each charge a 1% trade fee, split equally between creator and protocol. After graduation, Uniswap v4 pools use a fixed 1% swap fee. Collected launch-pool HYPE fees are also split equally; see <Link to="/docs/fees" className="doc-inline-link">Fees and rewards</Link>.</p>,
       },
     ],
   },
@@ -126,7 +126,7 @@ const docPages: DocPage[] = [
       },
       {
         title: 'What graduation changes',
-        body: <p>When the configured net-HYPE threshold is reached, the contract marks the launch graduated. The market remains open in the same pool, so there is no curve-to-pool migration step and no graduation transaction that transfers the locked position.</p>,
+        body: <p>When the curve sells its 60% allocation, its net HYPE reserve reaches the launch threshold. That final buy automatically initializes the no-hook V4 pool and supplies the 40% reserved token allocation. If pool initialization fails, the whole buy reverts atomically. The V4 position cannot be withdrawn by the creator or an administrator. Graduation is therefore an automatic curve-to-pool transition, not a separate manual migration.</p>,
       },
     ],
   },
@@ -139,7 +139,7 @@ const docPages: DocPage[] = [
     sections: [
       {
         title: 'Launch pool fee',
-        body: <p>Launch pools use a fixed 1% Uniswap v4 fee. When Vyntra collects HYPE-denominated fees from its launch position, half is allocated to the creator and half to the protocol. Collected token-denominated fees go to the creator.</p>,
+        body: <p>Buys and sells on a bonding curve each charge 1%. After graduation, the Uniswap v4 pool charges 1% per swap. Curve fees are split equally between the creator and protocol. When Vyntra collects fees from the locked V4 position, half of HYPE fees are credited to the creator and half to the protocol; token-denominated fees go to the creator.</p>,
       },
       {
         title: 'Protocol share',
@@ -154,13 +154,13 @@ const docPages: DocPage[] = [
   {
     slug: 'vyntra-tokenomics',
     group: 'Protocol',
-    title: '$VYNTRA and its reserve',
+      title: '$VYNTRA and its reserve',
     summary: 'Supply, what is available to buy, and how reserve releases are governed.',
     keywords: 'VYNTRA platform token 1 billion 50 million 950 million allocations reserve policy vault 30 day campaign release cap',
     sections: [
       {
         title: 'Where the supply starts',
-        body: <><p>VYNTRA has a fixed supply of 1 billion. At deployment, 50 million tokens are placed into the HYPE/VYNTRA Uniswap v4 pool. A buy swaps HYPE against the pool&apos;s available VYNTRA at its current price; the initial liquidity position is locked.</p><p>The other 950 million are held in <code>VyntraReserveVault</code>, outside the trading pool. There is no team allocation. The reserve is split into 190 million community and creator incentives, 142.5 million ecosystem grants, and 617.5 million unallocated reserve.</p><Callout title="What buyers can trade" tone="violet">The 50 million market allocation is available to trade from launch. Reserve tokens become claimable through public campaigns after the timelock process; this version does not add reserve-funded liquidity to the market.</Callout></>,
+        body: <><p>VYNTRA has a fixed supply of 1 billion. At deployment, 50 million tokens enter the platform market: 30 million are offered on its buyer-funded curve and 20 million are reserved for its locked HYPE/VYNTRA Uniswap v4 pool after the curve raises its configured target. The default target is 5 HYPE. The deployer supplies no HYPE for this market; buyers provide it through trades.</p><p>The other 950 million are held in <code>VyntraReserveVault</code>, outside the trading market. There is no team allocation. The reserve is split into 190 million community and creator incentives, 142.5 million ecosystem grants, and 617.5 million unallocated reserve.</p><Callout title="What buyers can trade" tone="violet">Buyers can trade the 30 million curve allocation from launch. At graduation, the remaining 20 million joins the accumulated HYPE in the locked V4 pool. Reserve tokens remain outside the market and become claimable only through public campaigns after the timelock process.</Callout></>,
       },
       {
         title: 'How the reserve can be used',
@@ -197,9 +197,9 @@ const docPages: DocPage[] = [
           ['OWNER_ADDRESS', 'Shell variable used by --sender. It must match the Foundry keystore account that broadcasts the deployment.'],
           ['TREASURY', 'Optional operations treasury address; defaults to the deployer. Receives the 20% operations share.'],
           ['VYNTRA_RESERVE_SAFE', 'Set explicitly to the treasury Safe. This address alone can propose reserve releases; use a multisig for mainnet.'],
-          ['GRADUATION_THRESHOLD', 'Optional net HYPE milestone in wei; defaults to 1000 HYPE. It changes the graduated status, not the pool or trading venue.'],
-          ['NATIVE_SEED', 'Optional platform-market HYPE seed in wei; defaults to 5 HYPE. The contract accepts 5–100 HYPE. Keep extra HYPE for gas.'],
-          ['VYNTRA_SEED', 'Must be exactly 50000000000000000000000000 (50 million tokens, 18 decimals); any other amount reverts.'],
+          ['GRADUATION_THRESHOLD', 'Optional HYPE amount in wei raised by public buyers before each launch curve graduates; defaults to 1000 HYPE. It also sets the curve price schedule.'],
+          ['VYNTRA_GRADUATION_THRESHOLD', 'Optional HYPE amount in wei raised by public buyers before the VYNTRA market graduates; defaults to 5 HYPE.'],
+          ['NATIVE_SEED / VYNTRA_SEED', 'Not used. Creators and the deployer do not provide required HYPE liquidity. The platform market allocation is fixed at 50 million VYNTRA (18 decimals).'],
           ['VYNTRA_PROMOTION_FEE', 'Optional featured-placement price per day in wei; defaults to 250,000 VYNTRA.'],
           ['RPC URL and chain ID', 'Passed as --rpc-url and --chain-id in the forge command, not read from environment by this script. Testnet is 99801.'],
         ]} />,
