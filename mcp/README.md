@@ -65,7 +65,7 @@ Add this object to the host's MCP server configuration and restart the host. Eac
 | `vyntra_get_launch_trades` | Read the indexed trade tape for one launch | Indexer |
 | `vyntra_get_wallet_activity` | Read indexed portfolio and trades for a wallet | Indexer |
 | `vyntra_get_trade_quote` | Quote a launch token or $VYNTRA trade against HYPE | Factory; platform quote also needs market address |
-| `vyntra_prepare_launch` | Return unsigned factory calldata and the predicted `0x7f7` token address | Factory and RPC |
+| `vyntra_prepare_launch` | Return unsigned factory calldata and the predicted `0x7f7` token address; accepts website, X, Telegram, an optional HYPE opening buy, and a creator fee wallet when the deployed factory supports it | Factory and RPC |
 | `vyntra_prepare_trade` | Return unsigned buy/sell calldata and an approval step when needed | Factory; platform trade also needs market and token addresses |
 | `vyntra_prepare_creator_fee_claim` | Return unsigned creator-fee claim calldata | Factory and RPC |
 
@@ -76,6 +76,7 @@ Prepared trades include a quote-derived minimum output and an unsigned transacti
 - The agent must show the network, contract, asset amount, quote, minimum output, and approval to the user before any wallet action.
 - The MCP server does not request or store seed phrases or private keys, and cannot sign, submit, or fund transactions.
 - A launch requires no HYPE liquidity deposit or platform launch fee. The wallet needs HYPE for gas; any value explicitly sent with the factory call is an optional creator buy.
+- The optional creator fee wallet requires the updated VyntraFactory. Older factories keep sending creator fees to the launch wallet.
 - The indexer can lag the chain. Verify recent transactions in the Elysium explorer.
 - Testnet HYPE has no guaranteed dollar value.
 

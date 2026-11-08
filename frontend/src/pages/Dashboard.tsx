@@ -17,6 +17,7 @@ import { explorerTx, formatNative, shortAddr, type LaunchView } from '../lib/con
 import { formatUserError } from '../lib/errors'
 import { KeeperPanel } from '../components/KeeperPanel'
 import { HypeUsd } from '../components/HypeUsd'
+import { CreatorFeeWalletControl } from '../components/CreatorFeeWalletControl'
 import { zeroAddress } from 'viem'
 
 type ClaimKind = 'fees' | 'funds' | 'buyback' | 'dividends' | 'liquidity'
@@ -289,6 +290,8 @@ export function Dashboard() {
                         </Link>
                       </div>
                     </div>
+
+                    <CreatorFeeWalletControl curve={l.curve} creator={l.creator} />
 
                     {hasTax && accruals && (
                       <div className="grid gap-2 rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-3 sm:grid-cols-2 lg:grid-cols-4">

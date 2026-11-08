@@ -11,7 +11,12 @@ import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { MessageCircle, Send } from 'lucide-react'
 import { vyntraBoardAbi } from '../lib/abis'
 import { activeChain } from '../lib/chains'
-import { BOARD_ADDRESS, isBoardConfigured, shortAddr } from '../lib/config'
+import {
+  BOARD_ADDRESS,
+  isBoardConfigured,
+  LEGACY_BOARD_ADDRESS,
+  shortAddr,
+} from '../lib/config'
 import { formatUserError } from '../lib/errors'
 
 const MAX_BODY = 280
@@ -37,6 +42,11 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
   const [msg, setMsg] = useState<string | null>(null)
 
   const enabled = isBoardConfigured && launchId >= 0
+  const legacyEnabled = Boolean(
+    LEGACY_BOARD_ADDRESS &&
+    LEGACY_BOARD_ADDRESS.toLowerCase() !== BOARD_ADDRESS.toLowerCase() &&
+    launchId >= 0,
+  )
 
   const { data: count, refetch: refetchCount } = useReadContract({
     address: BOARD_ADDRESS,
@@ -46,8 +56,22 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
     query: { enabled, refetchInterval: 12_000 },
   })
 
+  const {
+    data: legacyCount,
+    refetch: refetchLegacyCount,
+  } = useReadContract({
+    address: LEGACY_BOARD_ADDRESS,
+    abi: vyntraBoardAbi,
+    functionName: 'getReplyCount',
+    args: [BigInt(launchId)],
+    query: { enabled: legacyEnabled, refetchInterval: 12_000 },
+  })
+
   const replyCount = Number(count ?? 0n)
+  const legacyReplyCount = Number(legacyCount ?? 0n)
+  const totalReplyCount = replyCount + legacyReplyCount
   const pageSize = Math.min(50, Math.max(replyCount, 1))
+  const legacyPageSize = Math.min(50, Math.max(legacyReplyCount, 1))
 
   const { data: page, refetch: refetchPage } = useReadContract({
     address: BOARD_ADDRESS,
@@ -57,10 +81,22 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
     query: { enabled: enabled && replyCount > 0, refetchInterval: 12_000 },
   })
 
+  const {
+    data: legacyPage,
+    refetch: refetchLegacyPage,
+  } = useReadContract({
+    address: LEGACY_BOARD_ADDRESS,
+    abi: vyntraBoardAbi,
+    functionName: 'getReplies',
+    args: [BigInt(launchId), 0n, BigInt(legacyPageSize)],
+    query: { enabled: legacyEnabled && legacyReplyCount > 0, refetchInterval: 12_000 },
+  })
+
   const replies = useMemo(() => {
-    const list = (page as Reply[] | undefined) ?? []
-    return [...list].reverse()
-  }, [page])
+    const current = (page as Reply[] | undefined) ?? []
+    const legacy = (legacyPage as Reply[] | undefined) ?? []
+    return [...current, ...legacy].sort((a, b) => Number(b.createdAt - a.createdAt))
+  }, [page, legacyPage])
 
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract()
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash })
@@ -72,7 +108,9 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
     setMsg('Reply posted on-chain.')
     refetchCount()
     refetchPage()
-  }, [isSuccess, refetchCount, refetchPage])
+    refetchLegacyCount()
+    refetchLegacyPage()
+  }, [isSuccess, refetchCount, refetchPage, refetchLegacyCount, refetchLegacyPage])
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -121,7 +159,7 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
             Replies{tokenSymbol ? ` · $${tokenSymbol}` : ''}{platformThread ? ' · platform' : ''}
           </h2>
         </div>
-        <span className="chip">{replyCount}</span>
+          <span className="chip">{totalReplyCount}</span>
       </div>
 
       <form onSubmit={submit} className="space-y-3 border-b border-[var(--vyntra-border)] px-5 py-4">
@@ -167,7 +205,7 @@ export function ReplyThread({ launchId, tokenSymbol, platformThread }: Props) {
       </form>
 
       <div className="divide-y divide-[var(--vyntra-border)]">
-        {replyCount === 0 ? (
+        {totalReplyCount === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-[var(--vyntra-muted)]">
             No replies yet. Be the first voice here.
           </p>

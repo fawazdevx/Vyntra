@@ -34,9 +34,11 @@ export const FEE_ROUTER = optionalAddress(import.meta.env.VITE_FEE_ROUTER)
 export const VYNTRA_RESERVE_TIMELOCK = optionalAddress(import.meta.env.VITE_VYNTRA_RESERVE_TIMELOCK)
 export const VYNTRA_RESERVE_VAULT = optionalAddress(import.meta.env.VITE_VYNTRA_RESERVE_VAULT)
 export const VYNTRA_PROMOTION = optionalAddress(import.meta.env.VITE_VYNTRA_PROMOTION)
+export const LEGACY_VYNTRA_PROMOTION = optionalAddress(import.meta.env.VITE_LEGACY_VYNTRA_PROMOTION)
 export const BOARD_ADDRESS = (optionalAddress(import.meta.env.VITE_BOARD_ADDRESS) ??
   ZERO_ADDRESS) as Address
 export const isBoardConfigured = Boolean(optionalAddress(import.meta.env.VITE_BOARD_ADDRESS))
+export const LEGACY_BOARD_ADDRESS = optionalAddress(import.meta.env.VITE_LEGACY_BOARD_ADDRESS)
 
 export const KEEPER_ADDRESS = (optionalAddress(import.meta.env.VITE_KEEPER_ADDRESS) ??
   ZERO_ADDRESS) as Address

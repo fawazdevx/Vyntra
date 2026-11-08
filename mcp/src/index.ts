@@ -126,6 +126,37 @@ const factoryAbi = [
       { name: 'curve', type: 'address' },
     ],
   },
+  {
+    type: 'function',
+    name: 'creatorFeePayoutVersion',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ type: 'uint256' }],
+  },
+  {
+    type: 'function',
+    name: 'spawnWithSettings',
+    stateMutability: 'payable',
+    inputs: [
+      { name: 'name', type: 'string' },
+      { name: 'symbol', type: 'string' },
+      { name: 'imageURI', type: 'string' },
+      { name: 'description', type: 'string' },
+      { name: 'referrer', type: 'address' },
+      { name: 'buyTaxBps', type: 'uint256' },
+      { name: 'sellTaxBps', type: 'uint256' },
+      { name: 'fundsBps', type: 'uint256' },
+      { name: 'buybackBps', type: 'uint256' },
+      { name: 'dividendsBps', type: 'uint256' },
+      { name: 'liquidityBps', type: 'uint256' },
+      { name: 'creatorFeeRecipient', type: 'address' },
+      { name: 'tokenSalt', type: 'bytes32' },
+    ],
+    outputs: [
+      { name: 'token', type: 'address' },
+      { name: 'curve', type: 'address' },
+    ],
+  },
 ] as const
 
 const curveAbi = [
@@ -244,6 +275,44 @@ function parseAmount(amount: string, label: string): bigint {
     return parsed
   } catch {
     throw new Error(`${label} must be a positive decimal amount with at most 18 decimal places.`)
+  }
+}
+
+function normalizeLaunchLinks(description: string, website: string, xAccount: string, telegram: string) {
+  const normalizedWebsite = website.trim()
+    ? new URL(/^https?:\/\//i.test(website.trim()) ? website.trim() : `https://${website.trim()}`).toString().replace(/\/$/, '')
+    : ''
+  const normalizeSocial = (input: string, service: 'x' | 'telegram') => {
+    const raw = input.trim()
+    if (!raw) return ''
+    const hosts = service === 'x'
+      ? new Set(['x.com', 'www.x.com', 'twitter.com', 'www.twitter.com'])
+      : new Set(['t.me', 'www.t.me', 'telegram.me', 'www.telegram.me'])
+    const canonicalHost = service === 'x' ? 'x.com' : 't.me'
+    if (/^https?:\/\//i.test(raw)) {
+      const url = new URL(raw)
+      if (!hosts.has(url.hostname.toLowerCase())) throw new Error(`Enter a valid ${service === 'x' ? 'X' : 'Telegram'} link.`)
+      url.protocol = 'https:'
+      url.hostname = canonicalHost
+      return url.toString().replace(/\/$/, '')
+    }
+    const handle = raw.replace(/^@/, '').replace(/^\//, '')
+    if (!/^[A-Za-z0-9_]{1,64}$/.test(handle)) throw new Error(`Enter a valid ${service === 'x' ? 'X' : 'Telegram'} handle.`)
+    return `https://${canonicalHost}/${handle}`
+  }
+  const links = {
+    website: normalizedWebsite,
+    x: normalizeSocial(xAccount, 'x'),
+    telegram: normalizeSocial(telegram, 'telegram'),
+  }
+  const rows = [
+    links.website ? `Website: ${links.website}` : '',
+    links.x ? `X: ${links.x}` : '',
+    links.telegram ? `Telegram: ${links.telegram}` : '',
+  ].filter(Boolean)
+  return {
+    links,
+    description: rows.length ? `${description.trim()}\n\nVyntra links:\n${rows.join('\n')}` : description.trim(),
   }
 }
 
@@ -542,40 +611,78 @@ function createServer() {
   server.registerTool(
     'vyntra_prepare_launch',
     {
-      description: 'Prepare (but do not sign or submit) a token launch transaction with a factory-verified 0x7f7 address suffix.',
+      description: 'Prepare (but do not sign or submit) a token launch with optional project links, opening buy, and supported creator fee wallet settings.',
       inputSchema: z.object({
         name: z.string().trim().min(1).max(32),
         symbol: z.string().trim().min(1).max(10),
         imageURI: z.string().trim().min(1).max(2048),
         description: z.string().trim().min(1).max(2000),
+        website: z.string().trim().max(200).optional().default(''),
+        xAccount: z.string().trim().max(200).optional().default(''),
+        telegram: z.string().trim().max(200).optional().default(''),
+        openingBuyHype: z.string().trim().max(80).optional().default('0'),
+        creatorFeeWallet: z.string().trim().max(42).optional(),
       }),
     },
-    async ({ name, symbol, imageURI, description }) => {
+    async ({ name, symbol, imageURI, description, website, xAccount, telegram, openingBuyHype, creatorFeeWallet }) => {
       try {
         const factory = requireFactory()
         const normalizedSymbol = symbol.toUpperCase()
+        const { links, description: finalDescription } = normalizeLaunchLinks(description, website, xAccount, telegram)
+        let openingBuyWei = 0n
+        if (openingBuyHype) {
+          if (!/^\d+(\.\d{1,18})?$/.test(openingBuyHype)) {
+            throw new Error('Opening buy must be a decimal HYPE amount with at most 18 decimal places.')
+          }
+          openingBuyWei = parseEther(openingBuyHype)
+        }
+        let feeRecipient: Address | undefined
+        if (creatorFeeWallet) {
+          try {
+            feeRecipient = getAddress(creatorFeeWallet)
+          } catch {
+            throw new Error('Creator fee wallet must be a valid EVM address.')
+          }
+          const payoutVersion = await publicClient.readContract({
+            address: factory,
+            abi: factoryAbi,
+            functionName: 'creatorFeePayoutVersion',
+          }).catch(() => 0n)
+          if (payoutVersion < 1n) {
+            throw new Error('This deployed factory does not support a separate creator fee wallet. Use the launch wallet or wait for the factory upgrade.')
+          }
+        }
         const [nameTaken, symbolTaken, vanity] = await Promise.all([
           publicClient.readContract({ address: factory, abi: factoryAbi, functionName: 'isNameTaken', args: [name] }),
           publicClient.readContract({ address: factory, abi: factoryAbi, functionName: 'isSymbolTaken', args: [normalizedSymbol] }),
           publicClient.readContract({
             address: factory, abi: factoryAbi, functionName: 'findVanitySalt',
-            args: [name, normalizedSymbol, imageURI, description],
+            args: [name, normalizedSymbol, imageURI, finalDescription],
           }),
         ])
         if (nameTaken) throw new Error(`The name "${name}" is already registered.`)
         if (symbolTaken) throw new Error(`The ticker $${normalizedSymbol} is already registered.`)
         const [salt, predictedToken] = vanity
-        const data = encodeFunctionData({
-          abi: factoryAbi,
-          functionName: 'spawn',
-          args: [name, normalizedSymbol, imageURI, description, zeroAddress, 0n, 0n, 0n, 0n, 0n, 0n, salt],
-        })
+        const commonArgs = [name, normalizedSymbol, imageURI, finalDescription, zeroAddress, 0n, 0n, 0n, 0n, 0n, 0n] as const
+        const data = feeRecipient
+          ? encodeFunctionData({
+              abi: factoryAbi,
+              functionName: 'spawnWithSettings',
+              args: [...commonArgs, feeRecipient, salt],
+            })
+          : encodeFunctionData({
+              abi: factoryAbi,
+              functionName: 'spawn',
+              args: [...commonArgs, salt],
+            })
         return textResult({
-          transaction: txPayload(factory, data, 0n, `Launch ${name} ($${normalizedSymbol})`),
+          transaction: txPayload(factory, data, openingBuyWei, `Launch ${name} ($${normalizedSymbol})`),
           predictedToken,
           vanitySuffix: '7f7',
-          hypeRequiredForLaunch: 'No HYPE is required for liquidity or a platform launch fee; the wallet needs HYPE only for network gas.',
-          checkBeforeSigning: 'Confirm name, ticker, image URI, description, gas estimate, and predicted token address.',
+          projectLinks: links,
+          optionalOpeningBuyHype: openingBuyHype || '0',
+          creatorFeeWallet: feeRecipient ?? 'Launch wallet (default)',
+          checkBeforeSigning: 'Confirm name, ticker, image URI, description, project links, optional HYPE buy, creator fee wallet, gas estimate, and predicted token address. The opening buy must fit the remaining early-block limit.',
         })
       } catch (error) {
         return errorResult(error)

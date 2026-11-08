@@ -3,6 +3,7 @@ import { Sparkles, Star } from 'lucide-react'
 import { formatNative, shortAddr, type LaunchView } from '../lib/config'
 import { useWatchlist } from '../hooks/useWatchlist'
 import { HypeUsd } from './HypeUsd'
+import { parseLaunchDescription } from '../lib/launchMetadata'
 
 type Props = {
   launch: LaunchView
@@ -71,7 +72,7 @@ export function TokenCard({ launch, featuredUntil }: Props) {
               </span>
             </div>
             <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-[var(--vyntra-muted)]">
-              {launch.description || 'No description'}
+              {parseLaunchDescription(launch.description).description || 'No description'}
             </p>
           </div>
         </div>

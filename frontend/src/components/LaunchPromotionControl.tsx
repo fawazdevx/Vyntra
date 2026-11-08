@@ -12,7 +12,14 @@ import {
 } from 'wagmi'
 import { activeChain } from '../lib/chains'
 import { erc20Abi, vyntraPromotionAbi } from '../lib/abis'
-import { explorerTx, formatNative, VYNTRA_PROMOTION, VYNTRA_TOKEN, type LaunchView } from '../lib/config'
+import {
+  explorerTx,
+  formatNative,
+  LEGACY_VYNTRA_PROMOTION,
+  VYNTRA_PROMOTION,
+  VYNTRA_TOKEN,
+  type LaunchView,
+} from '../lib/config'
 import { formatUserError } from '../lib/errors'
 
 const DURATION_OPTIONS = [1, 3, 7] as const
@@ -58,15 +65,26 @@ export function LaunchPromotionControl({ launch }: { launch: LaunchView }) {
     query: { enabled: Boolean(VYNTRA_PROMOTION), refetchInterval: 30_000 },
   })
 
+  const { data: legacyFeaturedUntil } = useReadContract({
+    address: LEGACY_VYNTRA_PROMOTION,
+    abi: vyntraPromotionAbi,
+    functionName: 'featuredUntil',
+    args: [launch.token],
+    query: { enabled: Boolean(LEGACY_VYNTRA_PROMOTION), refetchInterval: 30_000 },
+  })
+
   const cost = (feePerDay ?? 0n) * BigInt(durationDays)
   const hasEnoughVyntra = tokenBalance != null && tokenBalance >= cost
   const requiresApproval = (allowance ?? 0n) < cost && !approvalConfirmed
   const now = BigInt(Math.floor(Date.now() / 1000))
-  const currentEnd = (featuredUntil ?? 0n) > now ? featuredUntil! : now
+  const effectiveFeaturedUntil = (legacyFeaturedUntil ?? 0n) > (featuredUntil ?? 0n)
+    ? legacyFeaturedUntil!
+    : featuredUntil ?? 0n
+  const currentEnd = effectiveFeaturedUntil > now ? effectiveFeaturedUntil : now
   const horizonValid = currentEnd + BigInt(durationDays * 86_400) <= now + 30n * 86_400n
-  const currentlyFeatured = Boolean(featuredUntil && featuredUntil > now)
-  const featureEnd = currentlyFeatured && featuredUntil
-    ? new Date(Number(featuredUntil) * 1000).toLocaleString()
+  const currentlyFeatured = effectiveFeaturedUntil > now
+  const featureEnd = currentlyFeatured
+    ? new Date(Number(effectiveFeaturedUntil) * 1000).toLocaleString()
     : null
 
   const { writeContractAsync, data: hash, isPending, error: writeError, reset } = useWriteContract()

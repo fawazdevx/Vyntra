@@ -43,7 +43,7 @@ export function About() {
           <p className="page-kicker">The Vyntra model</p>
           <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-[var(--vyntra-border)] bg-[var(--vyntra-card)] px-3 py-1.5 text-xs font-semibold text-[var(--vyntra-muted)]">
             <span className="h-2 w-2 rounded-full bg-[var(--vyntra-accent-2)]" />
-            Preparing for Elysium Testnet
+            Live on Elysium Testnet
           </p>
           <h1 className="page-title mt-6 max-w-3xl text-5xl leading-[1.04] sm:text-6xl lg:text-7xl">
             Launch with a story.
@@ -54,7 +54,7 @@ export function About() {
             Vyntra lets creators launch without supplying liquidity up front. Buyers trade on a transparent HYPE curve; at graduation, the remaining token allocation and raised HYPE initialize a permanently locked Uniswap v4 pool.
           </p>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--vyntra-faint)]">
-            The Elysium deployment is still being prepared. This page describes the contracts and token policy planned for that deployment.
+            Vyntra is live on Elysium Testnet. Test HYPE has no guaranteed dollar value; this deployment is for product testing and feedback.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/docs" className="btn-primary">
@@ -109,7 +109,7 @@ export function About() {
           <p className="page-kicker">For creators and traders</p>
           <h2 className="page-title mt-2 text-3xl sm:text-4xl">A launch should give people something to follow.</h2>
           <p className="mt-4 leading-relaxed text-[var(--vyntra-muted)]">
-            Creators bring the name, image, and idea. Traders get a live HYPE market, charts, and a shared view of activity.
+            Creators bring the name, image, links, and idea. They can include an optional first buy when launching. Traders get a live HYPE market, charts, and a shared view of activity.
           </p>
         </div>
         <div className="mt-8 grid gap-4 md:grid-cols-3">
@@ -117,7 +117,7 @@ export function About() {
             Each launch includes a name, ticker, image, and description. Vyntra checks names and tickers for duplicates.
           </Principle>
           <Principle icon={Coins} title="Start with defined bounds">
-            Creating a token requires no HYPE liquidity deposit or platform launch fee. The creator pays network gas; any HYPE sent with creation is treated as an optional first buy.
+            The creator pays network gas; any HYPE sent with creation is an optional first buy. The Elysium testnet factory currently sends creator fees to the launch wallet. The upgraded factory adds a selectable creator fee wallet and Studio updates.
           </Principle>
           <Principle icon={Flame} title="Share trading fees">
             Creators claim half of collected HYPE fees and all fees collected in their token. The protocol receives the other half of HYPE fees.
@@ -218,7 +218,7 @@ export function About() {
         <div className="space-y-3 text-sm leading-relaxed text-[var(--vyntra-muted)]">
           <p>Thin liquidity and large swaps can move a token’s price. Slippage limits help control execution, but they do not prevent losses.</p>
           <p>Vyntra locks its initial position. Independent liquidity providers can create separate positions and withdraw those positions. Read each token’s details and verify its factory registration before trading.</p>
-          <p>The Elysium Testnet deployment is being prepared. Test HYPE has no guaranteed dollar value, and VYNTRA’s buyback policy promises neither demand nor price appreciation.</p>
+          <p>Vyntra is live on Elysium Testnet. Test HYPE has no guaranteed dollar value, and VYNTRA’s buyback policy promises neither demand nor price appreciation.</p>
         </div>
       </section>
 
@@ -227,7 +227,7 @@ export function About() {
           <p className="page-kicker">Follow the launch</p>
           <h2 className="page-title mt-2 text-2xl sm:text-3xl">Meet Vyntra at the market.</h2>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-[var(--vyntra-muted)]">
-            Read the contract and tokenomics docs, then explore the markets when the Elysium test deployment is live.
+            Read the contract and tokenomics docs, then explore the live Elysium Testnet markets.
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-3">

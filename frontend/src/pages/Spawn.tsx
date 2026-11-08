@@ -9,33 +9,56 @@ import {
   useWaitForTransactionReceipt,
   useWriteContract,
 } from 'wagmi'
-import { decodeEventLog, zeroAddress } from 'viem'
+import { decodeEventLog, getAddress, isAddress, parseEther, zeroAddress } from 'viem'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { Rocket, Sparkles, Info, ExternalLink } from 'lucide-react'
+import { Rocket, Sparkles, Info, ExternalLink, Globe, AtSign, Send } from 'lucide-react'
 import { ImageUpload } from '../components/ImageUpload'
 import { spawnFactoryAbi } from '../lib/abis'
 import { activeChain } from '../lib/chains'
-import { explorerTx, FACTORY_ADDRESS } from '../lib/config'
+import { explorerTx, FACTORY_ADDRESS, isAppConfigured } from '../lib/config'
 import { formatUserError } from '../lib/errors'
+import {
+  buildLaunchDescription,
+  normalizeSocialLink,
+  normalizeWebsite,
+  type LaunchLinks,
+} from '../lib/launchMetadata'
 
 export function Spawn() {
   const navigate = useNavigate()
   const chainId = useChainId()
   const { switchChain, isPending: switching } = useSwitchChain()
-  const { isConnected } = useAccount()
+  const { address, isConnected } = useAccount()
   const publicClient = usePublicClient({ chainId: activeChain.id })
   const [name, setName] = useState('')
   const [symbol, setSymbol] = useState('')
   const [imageURI, setImageURI] = useState('')
   const [description, setDescription] = useState('')
+  const [website, setWebsite] = useState('')
+  const [xAccount, setXAccount] = useState('')
+  const [telegram, setTelegram] = useState('')
+  const [feeRecipient, setFeeRecipient] = useState('')
+  const [openingBuy, setOpeningBuy] = useState('')
   const [agentMode, setAgentMode] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [findingAddress, setFindingAddress] = useState(false)
+
+  const {
+    data: payoutVersion,
+    isFetched: payoutVersionFetched,
+  } = useReadContract({
+    address: FACTORY_ADDRESS,
+    abi: spawnFactoryAbi,
+    functionName: 'creatorFeePayoutVersion',
+    query: { enabled: isAppConfigured },
+  })
+  const supportsPayoutSettings = Number(payoutVersion ?? 0n) >= 1
 
   const trimmedName = name.trim()
   const trimmedSymbol = symbol.trim()
   const trimmedImage = imageURI.trim()
   const trimmedDesc = description.trim()
+  const trimmedFeeRecipient = feeRecipient.trim()
 
   const { data: nameTaken } = useReadContract({
     address: FACTORY_ADDRESS,
@@ -63,10 +86,42 @@ export function Spawn() {
     if (!trimmedName || !trimmedSymbol) return 'Name and symbol are required.'
     if (!trimmedImage) return 'Image is required — upload a file or paste a URL before launching.'
     if (!trimmedDesc) return 'Description is required — tell the story of this coin.'
+    if (trimmedFeeRecipient && !isAddress(trimmedFeeRecipient)) {
+      return 'Enter a valid creator fee wallet address.'
+    }
+    if (
+      trimmedFeeRecipient &&
+      address &&
+      trimmedFeeRecipient.toLowerCase() !== address.toLowerCase() &&
+      payoutVersionFetched &&
+      !supportsPayoutSettings
+    ) {
+      return 'This deployed factory only pays creator fees to the launch wallet. A factory update is required to use another fee wallet.'
+    }
+    if (openingBuy.trim()) {
+      try {
+        if (!/^\d+(\.\d{1,18})?$/.test(openingBuy.trim())) return 'Enter an opening buy amount in HYPE with up to 18 decimals.'
+        parseEther(openingBuy.trim())
+      } catch {
+        return 'Enter a valid opening buy amount in HYPE.'
+      }
+    }
     if (nameTaken) return `Name "${trimmedName}" is already taken — pick a different name.`
     if (symbolTaken) return `Ticker $${trimmedSymbol.toUpperCase()} is already taken — change the symbol.`
     return null
-  }, [trimmedName, trimmedSymbol, trimmedImage, trimmedDesc, nameTaken, symbolTaken])
+  }, [
+    trimmedName,
+    trimmedSymbol,
+    trimmedImage,
+    trimmedDesc,
+    trimmedFeeRecipient,
+    address,
+    payoutVersionFetched,
+    supportsPayoutSettings,
+    openingBuy,
+    nameTaken,
+    symbolTaken,
+  ])
 
   const canSubmit = !validationError
 
@@ -109,10 +164,35 @@ export function Spawn() {
       setStatus('Switch to Elysium Testnet to continue.')
       return
     }
+    if (!address) {
+      setStatus('Connect the wallet that should create this token.')
+      return
+    }
 
-    const finalDescription = agentMode
+    let links: LaunchLinks
+    try {
+      links = {
+        website: normalizeWebsite(website),
+        x: normalizeSocialLink(xAccount, 'x'),
+        telegram: normalizeSocialLink(telegram, 'telegram'),
+      }
+    } catch (linkError) {
+      setStatus(linkError instanceof Error ? linkError.message : 'Check the social links and try again.')
+      return
+    }
+
+    const descriptionWithAgent = agentMode
       ? `${trimmedDesc}\n\n[Agent Launch]`
       : trimmedDesc
+    const finalDescription = buildLaunchDescription(descriptionWithAgent, links)
+    const openingBuyWei = openingBuy.trim() ? parseEther(openingBuy.trim()) : 0n
+    let payoutAddress: `0x${string}`
+    try {
+      payoutAddress = trimmedFeeRecipient ? getAddress(trimmedFeeRecipient) : address
+    } catch {
+      setStatus('Enter a valid creator fee wallet address.')
+      return
+    }
 
     if (!publicClient) {
       setStatus('Unable to read Elysium Testnet. Check the network connection and try again.')
@@ -121,6 +201,19 @@ export function Spawn() {
 
     setFindingAddress(true)
     try {
+      const payoutVersionOnChain = await publicClient
+        .readContract({
+          address: FACTORY_ADDRESS,
+          abi: spawnFactoryAbi,
+          functionName: 'creatorFeePayoutVersion',
+        })
+        .catch(() => 0n)
+      const canSetPayout = payoutVersionOnChain >= 1n
+      if (!canSetPayout && payoutAddress.toLowerCase() !== address.toLowerCase()) {
+        setStatus('This deployed factory only pays creator fees to the launch wallet. A factory update is required to use another fee wallet.')
+        return
+      }
+
       setStatus('Finding a token address ending in 7f7…')
       const [tokenSalt, predictedToken] = await publicClient.readContract({
         address: FACTORY_ADDRESS,
@@ -128,28 +221,41 @@ export function Spawn() {
         functionName: 'findVanitySalt',
         args: [trimmedName, trimmedSymbol.toUpperCase(), trimmedImage, finalDescription],
       })
-      setStatus(`Vyntra address ${predictedToken} ends in 7f7. Confirm the launch in your wallet.`)
-      await writeContractAsync({
-        address: FACTORY_ADDRESS,
-        abi: spawnFactoryAbi,
-        functionName: 'spawn',
-        args: [
-          trimmedName,
-          trimmedSymbol.toUpperCase(),
-          trimmedImage,
-          finalDescription,
-          zeroAddress,
-          0n,
-          0n,
-          0n,
-          0n,
-          0n,
-          0n,
-          tokenSalt,
-        ],
-        value: 0n,
-        chainId: activeChain.id,
-      })
+      setStatus(
+        `Vyntra address ${predictedToken} ends in 7f7. ${openingBuyWei > 0n ? 'Your opening buy is included.' : ''} Confirm the launch in your wallet.`,
+      )
+      const commonArgs = [
+        trimmedName,
+        trimmedSymbol.toUpperCase(),
+        trimmedImage,
+        finalDescription,
+        zeroAddress,
+        0n,
+        0n,
+        0n,
+        0n,
+        0n,
+        0n,
+      ] as const
+      if (canSetPayout) {
+        await writeContractAsync({
+          address: FACTORY_ADDRESS,
+          abi: spawnFactoryAbi,
+          functionName: 'spawnWithSettings',
+          args: [...commonArgs, payoutAddress, tokenSalt],
+          value: openingBuyWei,
+          chainId: activeChain.id,
+        })
+      } else {
+        await writeContractAsync({
+          address: FACTORY_ADDRESS,
+          abi: spawnFactoryAbi,
+          functionName: 'spawn',
+          args: [...commonArgs, tokenSalt],
+          value: openingBuyWei,
+          chainId: activeChain.id,
+        })
+      }
     } catch (launchError) {
       setStatus(formatUserError(launchError))
     } finally {
@@ -227,6 +333,103 @@ export function Spawn() {
             </p>
           </Field>
 
+          <section className="space-y-4 rounded-xl border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-4 sm:p-5">
+            <div>
+              <h2 className="text-base font-semibold text-[var(--vyntra-fg)]">Launch profile</h2>
+              <p className="mt-1 text-sm text-[var(--vyntra-muted)]">
+                Add links so traders can find the project behind the token. They are saved with its on-chain description.
+              </p>
+            </div>
+            <Field label="Website">
+              <div className="relative">
+                <Globe className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--vyntra-faint)]" />
+                <input
+                  className="input pl-10"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="yourproject.xyz"
+                  maxLength={200}
+                />
+              </div>
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="X account">
+                <div className="relative">
+                  <AtSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--vyntra-faint)]" />
+                  <input
+                    className="input pl-10"
+                    value={xAccount}
+                    onChange={(e) => setXAccount(e.target.value)}
+                    placeholder="project or x.com/project"
+                    maxLength={200}
+                  />
+                </div>
+              </Field>
+              <Field label="Telegram">
+                <div className="relative">
+                  <Send className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--vyntra-faint)]" />
+                  <input
+                    className="input pl-10"
+                    value={telegram}
+                    onChange={(e) => setTelegram(e.target.value)}
+                    placeholder="project or t.me/project"
+                    maxLength={200}
+                  />
+                </div>
+              </Field>
+            </div>
+          </section>
+
+          <section className="space-y-4 rounded-xl border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-4 sm:p-5">
+            <div>
+              <h2 className="text-base font-semibold text-[var(--vyntra-fg)]">Creator settings</h2>
+              <p className="mt-1 text-sm text-[var(--vyntra-muted)]">
+                The launch rules stay the same for every token. Choose whether to buy at launch and where your creator fees should be sent.
+              </p>
+            </div>
+            <Field label="Optional opening buy · HYPE">
+              <input
+                className="input font-mono"
+                inputMode="decimal"
+                value={openingBuy}
+                onChange={(e) => setOpeningBuy(e.target.value)}
+                placeholder="0.00"
+              />
+              <p className="mt-1.5 text-xs leading-relaxed text-[var(--vyntra-faint)]">
+                Leave at 0 to start without a creator buy. This buy runs in the launch transaction and follows the same early-block limit as everyone else; an amount that exceeds the limit will revert.
+              </p>
+            </Field>
+            {payoutVersionFetched && supportsPayoutSettings ? (
+              <Field label="Creator fee wallet · optional">
+                <input
+                  className="input font-mono text-sm"
+                  value={feeRecipient}
+                  onChange={(e) => setFeeRecipient(e.target.value)}
+                  placeholder={address ?? 'Defaults to your connected wallet'}
+                  maxLength={42}
+                  spellCheck={false}
+                />
+                <p className="mt-1.5 text-xs leading-relaxed text-[var(--vyntra-faint)]">
+                  Defaults to your connected wallet. You can redirect unclaimed fees later from Studio.
+                </p>
+              </Field>
+            ) : (
+              <div className="rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-card)] p-3 text-sm">
+                <p className="font-medium text-[var(--vyntra-fg)]">Creator fee wallet</p>
+                <p className="mt-1 text-[var(--vyntra-muted)]">
+                  {payoutVersionFetched
+                    ? 'This deployed factory sends creator fees to the wallet that launches the token. Connect the wallet you want to receive them.'
+                    : 'Checking the active factory…'}
+                </p>
+                {payoutVersionFetched && (
+                  <p className="mt-1 font-mono text-xs text-[var(--vyntra-faint)]">
+                    {address ?? 'Connect a wallet to see its address'}
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
+
           <div className="rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-4">
             <p className="flex items-center gap-2 text-sm font-semibold text-[var(--vyntra-fg)]">
               <Info className="h-4 w-4" /> No HYPE deposit required
@@ -234,7 +437,8 @@ export function Spawn() {
             <p className="mt-1.5 text-sm leading-relaxed text-[var(--vyntra-muted)]">
               Token creation uses HYPE only for network gas. Buyers fund the curve through trades.
               At graduation, 40% of supply joins the collected HYPE in the locked V4 pool; the
-              remaining 60% is sold through the curve. You can choose to buy after launch.
+              remaining 60% is sold through the curve. The trade fee, supply split, graduation
+              target, and early-block protection are fixed across launches.
             </p>
           </div>
 
@@ -346,6 +550,13 @@ export function Spawn() {
             <p className="text-base leading-relaxed text-[var(--vyntra-muted)]">
               {description || 'Your description will show on the token page after launch.'}
             </p>
+            {(website.trim() || xAccount.trim() || telegram.trim()) && (
+              <div className="flex flex-wrap gap-2 text-xs text-[var(--vyntra-muted)]">
+                {website.trim() && <span className="chip"><Globe className="h-3 w-3" /> Website</span>}
+                {xAccount.trim() && <span className="chip"><AtSign className="h-3 w-3" /> X</span>}
+                {telegram.trim() && <span className="chip"><Send className="h-3 w-3" /> Telegram</span>}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               <span className="chip">1B supply</span>
               <span className="chip">Address ends 7f7</span>
@@ -353,6 +564,9 @@ export function Spawn() {
               <span className="chip">1% trade fee</span>
               <span className="chip">V4 position locks at graduation</span>
               <span className="chip">Published curve pricing</span>
+              {openingBuy.trim() && Number(openingBuy) > 0 && (
+                <span className="chip">Opening buy · {openingBuy} HYPE</span>
+              )}
               <span className="chip-live">{activeChain.testnet ? 'Testnet' : 'Mainnet'}</span>
               {agentMode && <span className="chip-demo">Agent</span>}
             </div>

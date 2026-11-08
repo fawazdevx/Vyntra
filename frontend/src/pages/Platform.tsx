@@ -146,13 +146,6 @@ export function Platform() {
     query: { enabled: Boolean(VYNTRA_MARKET), refetchInterval: 8_000 },
   })
 
-  const { data: reserveVyntra } = useReadContract({
-    address: VYNTRA_MARKET,
-    abi: vyntraMarketAbi,
-    functionName: 'reserveVyntra',
-    query: { enabled: Boolean(VYNTRA_MARKET), refetchInterval: 8_000 },
-  })
-
   const { data: reserveVaultBalance } = useReadContract({
     address: VYNTRA_TOKEN,
     abi: erc20Abi,
@@ -245,12 +238,8 @@ export function Platform() {
     },
   })
 
-  const price = marketSpotPriceWad != null
-    ? Number(formatEther(marketSpotPriceWad))
-    : reserveNative != null && reserveVyntra != null && reserveVyntra > 0n
-      ? Number(formatEther(reserveNative)) / Number(formatEther(reserveVyntra))
-      : 0
-  const spotMcap = price > 0 ? price * TOTAL_SUPPLY : trades.at(-1)?.mcap ?? 0
+  const price = marketSpotPriceWad != null ? Number(formatEther(marketSpotPriceWad)) : 0
+  const spotMcap = price > 0 ? price * TOTAL_SUPPLY : 0
 
   const { writeContract, data: hash, isPending, error: writeError, reset } = useWriteContract()
   const { isLoading: confirming, isSuccess } = useWaitForTransactionReceipt({ hash })
@@ -422,8 +411,8 @@ export function Platform() {
         <div className="flex flex-wrap gap-7 sm:gap-10">
           <Metric
             label="Market cap / FDV"
-            value={`${formatNative(spotMcap)} HYPE`}
-            sub={<HypeUsd value={spotMcap} />}
+            value={spotMcap > 0 ? `${formatNative(spotMcap)} HYPE` : '—'}
+            sub={spotMcap > 0 ? <HypeUsd value={spotMcap} /> : null}
           />
           <Metric
             label="Spot"

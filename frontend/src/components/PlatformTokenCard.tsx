@@ -17,17 +17,17 @@ export function PlatformTokenCard() {
     query: { enabled: ready, refetchInterval: 15_000, staleTime: 10_000 },
   })
 
-  const { data: reserveVyntra } = useReadContract({
+  const { data: spotPriceWad } = useReadContract({
     address: VYNTRA_MARKET,
     abi: vyntraMarketAbi,
-    functionName: 'reserveVyntra',
+    functionName: 'spotPriceWad',
     query: { enabled: ready, refetchInterval: 15_000, staleTime: 10_000 },
   })
 
-  const price =
-    reserveNative != null && reserveVyntra != null && reserveVyntra > 0n
-      ? Number(formatEther(reserveNative)) / Number(formatEther(reserveVyntra))
-      : 0
+  // Use the market's marginal spot quote, matching the Platform page and chart.
+  // reserveNative / reserveVyntra is an average-reserve ratio on the curve and
+  // materially understates price (and FDV) before graduation.
+  const price = spotPriceWad != null ? Number(formatEther(spotPriceWad)) : 0
 
   const mcap = price > 0 ? price * 1_000_000_000 : 0
 

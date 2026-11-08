@@ -101,11 +101,15 @@ const docPages: DocPage[] = [
       },
       {
         title: 'No required opening buy',
-        body: <p>Creating a token costs network gas only. HYPE sent with the factory call is treated as an optional first buy for the creator, and any amount beyond the curve&apos;s remaining capacity is refunded. Public buyers fund the curve; the creator does not have to provide the graduation liquidity.</p>,
+        body: <p>Creating a token costs network gas only. You can leave the opening buy at zero or include a HYPE buy in the launch transaction. Early buys share a 2% of supply limit across the first three blocks; an opening buy that exceeds the remaining limit reverts. Any amount beyond the curve&apos;s remaining capacity is refunded. Public buyers fund the curve; the creator does not have to provide the graduation liquidity.</p>,
       },
       {
-        title: 'Taxes and launch settings',
-        body: <p>The current Elysium deployment has creator buy and sell taxes disabled. Curve buys and sells each charge a 1% trade fee, split equally between creator and protocol. After graduation, Uniswap v4 pools use a fixed 1% swap fee. Collected launch-pool HYPE fees are also split equally; see <Link to="/docs/fees" className="doc-inline-link">Fees and rewards</Link>.</p>,
+        title: 'Profile and creator fee wallet',
+        body: <p>Add a website, X account, and Telegram link to the launch profile. Vyntra stores these as labeled lines in the token&apos;s on-chain description and shows them as links on its token page. On the updated factory, you may choose a creator fee wallet and change it later in Studio. Only the launch creator can trigger a claim; HYPE claims and collected token fees go to the selected fee wallet. The original Elysium testnet factory pays the connected creator wallet and does not support fee-wallet changes.</p>,
+      },
+      {
+        title: 'Fixed trading rules',
+        body: <p>Creator buy and sell taxes are disabled. Curve buys and sells each charge a 1% trade fee, split equally between creator and protocol. After graduation, Uniswap v4 pools use a fixed 1% swap fee. HYPE pairing, supply, allocation, graduation target, and early-block limit are shared across launches; see <Link to="/docs/fees" className="doc-inline-link">Fees and rewards</Link>.</p>,
       },
     ],
   },
@@ -183,85 +187,43 @@ const docPages: DocPage[] = [
   {
     slug: 'developers',
     group: 'Build',
-    title: 'Contracts and environment',
-    summary: 'Configure the Elysium app and indexer after deploying a fresh platform and factory.',
-    keywords: 'developer contracts env Vercel indexer RPC deployment addresses blocks Turso',
+    title: 'Contracts and infrastructure',
+    summary: 'Learn what each Vyntra contract does and how the app, indexer, and MCP use them.',
+    keywords: 'developer contracts Elysium indexer RPC deployment addresses VyntraFactory VyntraMarket',
     sections: [
       {
         title: 'Network',
         body: <p>Kinetiq Elysium Testnet uses chain ID <code>99801</code>, native token HYPE, and RPC <code>https://testnet-rpc.elysium.kinetiq.xyz</code>. The deployment script currently refuses to run on other chain IDs.</p>,
       },
       {
-        title: 'Foundry deploy environment',
-        body: <EnvTable rows={[
-          ['OWNER_ADDRESS', 'Shell variable used by --sender. It must match the Foundry keystore account that broadcasts the deployment.'],
-          ['TREASURY', 'Optional operations treasury address; defaults to the deployer. Receives the 20% operations share.'],
-          ['VYNTRA_RESERVE_SAFE', 'Set explicitly to the treasury Safe. This address alone can propose reserve releases; use a multisig for mainnet.'],
-          ['GRADUATION_THRESHOLD', 'Optional HYPE amount in wei raised by public buyers before each launch curve graduates; defaults to 1000 HYPE. It also sets the curve price schedule.'],
-          ['VYNTRA_GRADUATION_THRESHOLD', 'Optional HYPE amount in wei raised by public buyers before the VYNTRA market graduates; defaults to 5 HYPE.'],
-          ['NATIVE_SEED / VYNTRA_SEED', 'Not used. Creators and the deployer do not provide required HYPE liquidity. The platform market allocation is fixed at 50 million VYNTRA (18 decimals).'],
-          ['VYNTRA_PROMOTION_FEE', 'Optional featured-placement price per day in wei; defaults to 250,000 VYNTRA.'],
-          ['RPC URL and chain ID', 'Passed as --rpc-url and --chain-id in the forge command, not read from environment by this script. Testnet is 99801.'],
+        title: 'Core contracts',
+        body: <InfoTable rows={[
+          ['VyntraFactory', 'Registers launches, creates each token market, and enforces shared launch rules.'],
+          ['VyntraMarketDeployer', 'Creates the bonding-curve market contracts for new launches.'],
+          ['VyntraCurve', 'Per-token market: curve trading, fees, creator claims, graduation, and locked Uniswap v4 liquidity.'],
+          ['VYNTRA', 'Fixed-supply platform token paired with HYPE in the platform market.'],
+          ['VyntraMarket', 'The HYPE/VYNTRA market and platform-token quote source.'],
+          ['VyntraReserveTimelock', 'Enforces the public delay for reserve release proposals.'],
+          ['VyntraReserveVault', 'Holds the platform-token reserve and applies allocation and release limits.'],
+          ['VyntraFeeRouter', 'Splits protocol HYPE fees between the buyback vault and operations treasury.'],
+          ['VyntraBuybackVault', 'Runs capped VYNTRA buybacks and sends acquired tokens to the burn address.'],
+          ['VyntraBoard', 'Stores on-chain replies for launches and the platform token.'],
+          ['VyntraPromotion', 'Handles paid featured placement using VYNTRA.'],
+          ['VyntraKeeper', 'Allows anyone to trigger eligible protocol maintenance actions.'],
+          ['Uniswap v4 PoolManager', 'Elysium v4 infrastructure used by graduated markets.'],
         ]} />,
       },
       {
-        title: 'Frontend Vercel environment',
-        body: <EnvTable rows={[
-          ['VITE_CHAIN_ID', '99801. The app currently targets Elysium Testnet and rejects other chain IDs.'],
-          ['VITE_FACTORY_ADDRESS', 'Required. New VyntraFactory address from the deployment output.'],
-          ['VITE_VYNTRA_TOKEN', 'New platform token address.'],
-          ['VITE_VYNTRA_MARKET', 'New HYPE/VYNTRA market address.'],
-          ['VITE_SPAWN_TOKEN / VITE_SPAWN_MARKET', 'Deprecated aliases accepted by the app; use the VITE_VYNTRA_* names for new deployments.'],
-          ['VITE_VYNTRA_RESERVE_TIMELOCK', 'New reserve timelock address; enables the public delay display.'],
-          ['VITE_VYNTRA_RESERVE_VAULT', 'New reserve policy vault address; enables allocation balances and the rolling release cap.'],
-          ['VITE_VYNTRA_PROMOTION', 'New creator featured-placement contract.'],
-          ['VITE_BUYBACK_VAULT', 'New capped buyback vault.'],
-          ['VITE_FEE_ROUTER', 'New protocol fee router.'],
-          ['VITE_BOARD_ADDRESS', 'New VyntraBoard address.'],
-          ['VITE_KEEPER_ADDRESS', 'New permissionless keeper address.'],
-          ['VITE_INDEXER_URL', 'Indexer URL ending in /api, for example https://your-indexer.vercel.app/api.'],
-          ['VITE_WALLETCONNECT_ID', 'WalletConnect Cloud project ID; configure one for production wallet connections.'],
-          ['VITE_ELYSIUM_TESTNET_RPC_URL', 'Optional RPC override; defaults to https://testnet-rpc.elysium.kinetiq.xyz.'],
-          ['VITE_IMGBB_API_KEY', 'Optional ImgBB image-upload fallback. This VITE_ value is public in the browser bundle.'],
-        ]} />,
+        title: 'Where contract addresses are used',
+        body: <p>The frontend uses the active <code>VyntraFactory</code>, <code>VyntraBoard</code>, and <code>VyntraPromotion</code> contracts, plus the platform-token contracts above. The indexer reads the active factory and board, and also reads the VYNTRA market, token, and reserve vault. The MCP server needs the factory and RPC; its indexer and platform-market reads are optional. Use the deployment output to enter contract addresses in each service&apos;s private configuration.</p>,
       },
       {
-        title: 'Indexer Vercel environment',
-        body: <EnvTable rows={[
-          ['FACTORY_ADDRESS', 'Required. New factory address; set INDEXER_START_BLOCK to its deployment block.'],
-          ['BOARD_ADDRESS', 'Optional new board address.'],
-          ['VYNTRA_MARKET_ADDRESS', 'New platform market address; set this to index platform-token trades.'],
-          ['VYNTRA_TOKEN_ADDRESS', 'New platform token address; set this with the market address to index platform trades.'],
-          ['VYNTRA_RESERVE_VAULT_ADDRESS', 'New reserve policy vault address; indexes campaign, claim, expiry, and reallocation events.'],
-          ['INDEXER_CHAIN_ID', '99801 for Elysium Testnet.'],
-          ['INDEXER_RPC_URL', 'Elysium Testnet RPC URL.'],
-          ['INDEXER_START_BLOCK', 'Factory deployment block number.'],
-          ['VYNTRA_MARKET_START_BLOCK', 'Platform-market deployment block number.'],
-          ['VYNTRA_RESERVE_START_BLOCK', 'Reserve vault deployment block; defaults to INDEXER_START_BLOCK.'],
-          ['TURSO_DATABASE_URL', 'Required on Vercel. Use a new database for the Elysium deployment.'],
-          ['TURSO_AUTH_TOKEN', 'Required on Vercel with Turso; keep it server-side.'],
-          ['CRON_SECRET', 'Recommended random secret for protected manual indexer sync requests.'],
-          ['INDEXER_LOG_CHUNK', 'Optional maximum block span for each RPC log query; defaults to 2000.'],
-          ['INDEXER_MARKET_CATCHUP_CHUNKS', 'Optional platform-market catch-up work per request; defaults to 1 on Vercel.'],
-          ['VYNTRA_RESERVE_CATCHUP_CHUNKS', 'Optional reserve event catch-up work per request; defaults to 1 on Vercel.'],
-        ]} />,
+        title: 'Indexer and factory migration',
+        body: <><p>Run the indexer on Elysium Testnet with a durable database. Keep the indexer&apos;s existing database and checkpoint when upgrading the factory; imported launch records remain available, and the indexer continues reading future activity from the new factory.</p><p>After a factory migration, configure the new <code>VyntraFactory</code>, <code>VyntraBoard</code>, and <code>VyntraPromotion</code> addresses for new activity. Keep the previous Board and Promotion contracts as legacy readers so older replies and placements remain visible. Store database and scheduled-sync credentials in the indexer host&apos;s server-side settings.</p></>,
       },
       {
-        title: 'Local indexer options and aliases',
-        body: <><p>These are usually not needed in the Vercel indexer project. For local development, the indexer falls back to <code>file:local.db</code> and port <code>8787</code>.</p><EnvTable rows={[
-          ['INDEXER_DATABASE_URL', 'Optional local database URL, for example file:./data/elysium-testnet.sqlite.'],
-          ['LIBSQL_URL / LIBSQL_AUTH_TOKEN', 'Optional aliases for TURSO_DATABASE_URL / TURSO_AUTH_TOKEN.'],
-          ['ELYSIUM_TESTNET_RPC_URL', 'Fallback RPC variable if INDEXER_RPC_URL is unset.'],
-          ['INDEXER_POLL_MS', 'Local worker polling interval in milliseconds; defaults to 8000.'],
-          ['INDEXER_API_PORT', 'Local HTTP API port; defaults to 8787.'],
-          ['PORT', 'Host-provided fallback for the HTTP port; Vercel does not need this configured.'],
-          ['INDEXER_CONFIRMATIONS', 'Optional confirmations to wait before indexing; defaults to 1.'],
-          ['INDEXER_SYNC_STALE_SEC', 'Optional stale-sync threshold; defaults to 20 seconds.'],
-        ]} /></>,
-      },
-      {
-        title: 'Fresh deployment warning',
-        body: <Callout title="Keep secrets out of the frontend" tone="amber">Never put a private key, wallet seed, or Turso auth token in a VITE_ variable. The Vite values ship to every browser. Foundry uses the encrypted account selected with --account; the frontend and indexer never need the deployer key.</Callout>,
+        title: 'Keep signing credentials private',
+        body: <Callout title="Your wallet controls transactions" tone="amber">Never publish a deployer key, seed phrase, or database credential. The app and MCP prepare reads or unsigned transaction data; your wallet signs transactions. Keep database and scheduled indexer credentials in the indexer host&apos;s private settings.</Callout>,
       },
     ],
   },
@@ -274,7 +236,7 @@ const docPages: DocPage[] = [
     sections: [
       {
         title: 'What this MCP can do',
-        body: <><p>The local Vyntra MCP server reads the Elysium factory and Vyntra indexer. It can search launches, inspect a pool, read indexed trades and wallet activity, and get live launch or platform quotes.</p><p>It can also prepare unsigned launch, buy, sell, and creator-fee-claim transaction data. Your wallet reviews and signs each transaction separately.</p></>,
+        body: <><p>The local Vyntra MCP server reads the Elysium factory and Vyntra indexer. It can search launches, inspect a pool, read indexed trades and wallet activity, and get live launch or platform quotes.</p><p>It can also prepare unsigned launches with project links and an optional opening buy. A factory that supports creator payout settings can prepare a launch with a selected creator fee wallet. It also prepares buy, sell, and fee-claim transactions. Your wallet reviews and signs each transaction separately.</p></>,
       },
       {
         title: 'What it cannot do',
@@ -282,21 +244,15 @@ const docPages: DocPage[] = [
       },
       {
         title: 'Install and configure',
-        body: <><p>Use Node.js 20 or newer. From the repository, install the MCP package dependencies:</p><CodeBlock code={'cd mcp\nnpm install'} /><p>Set these environment values in your MCP host configuration:</p><EnvTable rows={[
-          ['VYNTRA_FACTORY_ADDRESS', 'Required; Elysium Testnet factory.'],
-          ['VYNTRA_RPC_URL', 'Optional; defaults to the public Elysium Testnet RPC.'],
-          ['VYNTRA_INDEXER_URL', 'Optional; URL ending in /api enables indexed activity.'],
-          ['VYNTRA_MARKET_ADDRESS', 'Optional; enables $VYNTRA platform market quotes/trades.'],
-          ['VYNTRA_TOKEN_ADDRESS', 'Optional; needed with the platform market for sell approvals.'],
-        ]} /></>,
+        body: <><p>Use Node.js 20 or newer. From the repository, install the MCP package dependencies:</p><CodeBlock code={'cd mcp\nnpm install'} /><p>Configure the MCP host with the deployed <code>VyntraFactory</code> address and Elysium Testnet RPC. Add the indexer endpoint for indexed activity, and the <code>VyntraMarket</code> and <code>VYNTRA</code> addresses for platform-token quotes. Keep this connection configuration on your local MCP host.</p></>,
       },
       {
         title: 'Example MCP host command',
-        body: <><p>Point your MCP-compatible client at the local server. Replace the path and addresses with your own:</p><CodeBlock code={`{\n  "mcpServers": {\n    "vyntra": {\n      "command": "npm",\n      "args": ["--prefix", "/path/to/Vyntra/mcp", "run", "start"],\n      "env": {\n        "VYNTRA_FACTORY_ADDRESS": "0xYourFactoryAddress",\n        "VYNTRA_INDEXER_URL": "https://your-indexer.vercel.app/api",\n        "VYNTRA_MARKET_ADDRESS": "0xYourPlatformMarket",\n        "VYNTRA_TOKEN_ADDRESS": "0xYourVyntraToken"\n      }\n    }\n  }\n}`} /><p>Each MCP host has its own configuration file. Restart the host after adding the server, then inspect the available Vyntra tools before using them.</p></>,
+        body: <p>Point your MCP-compatible client at the local server using the package path. Add the deployed <code>VyntraFactory</code> address and optional indexer and platform-market addresses in the host&apos;s local connection settings. Each MCP host stores these settings in a different place. Restart the host, then inspect the available Vyntra tools before using them.</p>,
       },
       {
         title: 'Available tools',
-        body: <ul><li><code>vyntra_search_launches</code> and <code>vyntra_get_launch</code></li><li><code>vyntra_get_stats</code>, <code>vyntra_get_launch_trades</code>, and <code>vyntra_get_wallet_activity</code> (indexer required)</li><li><code>vyntra_get_trade_quote</code></li><li><code>vyntra_prepare_launch</code> with the 7f7 vanity check</li><li><code>vyntra_prepare_trade</code>, including an approval step when a sell needs one</li><li><code>vyntra_prepare_creator_fee_claim</code></li></ul>,
+        body: <ul><li><code>vyntra_search_launches</code> and <code>vyntra_get_launch</code></li><li><code>vyntra_get_stats</code>, <code>vyntra_get_launch_trades</code>, and <code>vyntra_get_wallet_activity</code> (indexer required)</li><li><code>vyntra_get_trade_quote</code></li><li><code>vyntra_prepare_launch</code> with the 7f7 vanity check, profile links, optional first buy, and supported creator payout selection</li><li><code>vyntra_prepare_trade</code>, including an approval step when a sell needs one</li><li><code>vyntra_prepare_creator_fee_claim</code></li></ul>,
       },
       {
         title: 'Keep approvals explicit',
@@ -356,12 +312,12 @@ function CodeBlock({ code }: { code: string }) {
   )
 }
 
-function EnvTable({ rows }: { rows: [string, string][] }) {
+function InfoTable({ rows }: { rows: [string, string][] }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--vyntra-border)]">
       <table className="w-full min-w-[520px] border-collapse text-left text-sm">
         <thead className="bg-[var(--vyntra-elev)] text-[var(--vyntra-faint)]">
-          <tr><th className="px-3 py-2.5 font-semibold">Variable</th><th className="px-3 py-2.5 font-semibold">Purpose</th></tr>
+          <tr><th className="px-3 py-2.5 font-semibold">Contract</th><th className="px-3 py-2.5 font-semibold">Purpose</th></tr>
         </thead>
         <tbody>
           {rows.map(([name, purpose]) => (

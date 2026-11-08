@@ -11,7 +11,7 @@ import {
 } from 'wagmi'
 import { parseEther, formatEther, maxUint256, zeroAddress } from 'viem'
 import { ConnectButton } from '@rainbow-me/rainbowkit'
-import { ArrowLeft, Copy, ExternalLink, Star } from 'lucide-react'
+import { ArrowLeft, Copy, ExternalLink, Star, Globe, AtSign, Send } from 'lucide-react'
 import { bondingCurveAbi, erc20Abi } from '../lib/abis'
 import { activeChain } from '../lib/chains'
 import { useLaunch } from '../hooks/useLaunches'
@@ -26,6 +26,7 @@ import { LaunchPromotionControl } from '../components/LaunchPromotionControl'
 import { HypeUsd } from '../components/HypeUsd'
 import { explorerAddress, explorerTx, formatNative, shortAddr } from '../lib/config'
 import { formatUserError } from '../lib/errors'
+import { parseLaunchDescription } from '../lib/launchMetadata'
 
 const PCTS = [25, 50, 75, 100] as const
 const SLIPPAGE_OPTIONS = [50, 100, 200, 500] as const
@@ -66,6 +67,10 @@ export function Token() {
   const [msg, setMsg] = useState<string | null>(null)
 
   const { data: launch, isLoading, isError, error, refetch } = useLaunch(id)
+  const launchMetadata = useMemo(
+    () => parseLaunchDescription(launch?.description ?? ''),
+    [launch?.description],
+  )
   const {
     data: trades = [],
     isLoading: tradesLoading,
@@ -104,6 +109,13 @@ export function Token() {
     abi: bondingCurveAbi,
     functionName: 'graduated',
     query: { enabled: Boolean(launch?.curve), refetchInterval: 5_000 },
+  })
+
+  const { data: creatorFeeRecipient } = useReadContract({
+    address: launch?.curve,
+    abi: bondingCurveAbi,
+    functionName: 'creatorFeeRecipient',
+    query: { enabled: Boolean(launch?.curve) },
   })
 
   const { data: liveMigrated } = useReadContract({
@@ -424,8 +436,21 @@ export function Token() {
               </span>
             </div>
             <p className="mt-1.5 max-w-2xl text-base text-[var(--vyntra-muted)] line-clamp-2">
-              {launch.description || 'No description'}
+              {launchMetadata.description || 'No description'}
             </p>
+            {(launchMetadata.links.website || launchMetadata.links.x || launchMetadata.links.telegram) && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {launchMetadata.links.website && (
+                  <SocialLink href={launchMetadata.links.website} label="Website" icon={<Globe className="h-3.5 w-3.5" />} />
+                )}
+                {launchMetadata.links.x && (
+                  <SocialLink href={launchMetadata.links.x} label="X" icon={<AtSign className="h-3.5 w-3.5" />} />
+                )}
+                {launchMetadata.links.telegram && (
+                  <SocialLink href={launchMetadata.links.telegram} label="Telegram" icon={<Send className="h-3.5 w-3.5" />} />
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -748,6 +773,7 @@ export function Token() {
               {poolManager && <AddrRow label="PoolManager" addr={poolManager} />}
               {isGraduated && poolId && <PoolIdRow value={poolId} copied={copied} onCopy={() => void copyAddr(poolId)} />}
               <AddrRow label="Creator" addr={launch.creator} />
+              <AddrRow label="Creator fee wallet" addr={creatorFeeRecipient || launch.creator} />
             </div>
           </div>
         </aside>
@@ -773,6 +799,21 @@ function Metric({
       </div>
       {sub && <div className="mt-1 text-sm">{sub}</div>}
     </div>
+  )
+}
+
+function SocialLink({ href, label, icon }: { href: string; label: string; icon: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center gap-1.5 rounded-md border border-white/[0.1] px-2.5 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-cyan-400/50 hover:text-cyan-200"
+    >
+      {icon}
+      {label}
+      <ExternalLink className="h-3 w-3 opacity-60" />
+    </a>
   )
 }
 

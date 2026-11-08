@@ -13,7 +13,9 @@ interface ImportMetaEnv {
   readonly VITE_VYNTRA_RESERVE_TIMELOCK?: string
   readonly VITE_VYNTRA_RESERVE_VAULT?: string
   readonly VITE_VYNTRA_PROMOTION?: string
+  readonly VITE_LEGACY_VYNTRA_PROMOTION?: string
   readonly VITE_BOARD_ADDRESS?: string
+  readonly VITE_LEGACY_BOARD_ADDRESS?: string
   readonly VITE_KEEPER_ADDRESS?: string
   readonly VITE_INDEXER_URL?: string
   readonly VITE_WALLETCONNECT_ID?: string

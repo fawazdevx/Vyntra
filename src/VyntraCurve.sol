@@ -47,6 +47,7 @@ contract VyntraCurve is ReentrancyGuard, IUnlockCallback {
 
     VyntraToken public immutable token;
     address public immutable creator;
+    address public creatorFeeRecipient;
     address public immutable protocolTreasury;
     address public immutable factory;
     address public immutable splitter;
@@ -85,6 +86,7 @@ contract VyntraCurve is ReentrancyGuard, IUnlockCallback {
     event FeesClaimed(address indexed account, uint256 amount);
     event V4PoolInitialized(address indexed token, bytes32 indexed poolId, uint160 sqrtPriceX96, uint256 nativeSeed, uint256 tokenSeed, uint128 liquidity);
     event V4FeesCollected(uint256 creatorNative, uint256 protocolNative, uint256 creatorToken);
+    event CreatorFeeRecipientUpdated(address indexed previousRecipient, address indexed newRecipient);
 
     error Slippage();
     error AntiSnipe();
@@ -111,11 +113,13 @@ contract VyntraCurve is ReentrancyGuard, IUnlockCallback {
         uint256 graduationThreshold_,
         uint256 totalSupply_,
         address splitter_,
-        address poolManager_
+        address poolManager_,
+        address creatorFeeRecipient_
     ) {
         if (
             token_ == address(0) || creator_ == address(0) || protocolTreasury_ == address(0)
                 || factory_ == address(0) || poolManager_ == address(0)
+                || creatorFeeRecipient_ == address(0)
                 || poolManager_.code.length == 0 || graduationThreshold_ == 0
                 || graduationThreshold_ > 1e36 || totalSupply_ < 2
         ) revert BadConfig();
@@ -130,6 +134,7 @@ contract VyntraCurve is ReentrancyGuard, IUnlockCallback {
 
         token = VyntraToken(token_);
         creator = creator_;
+        creatorFeeRecipient = creatorFeeRecipient_;
         protocolTreasury = protocolTreasury_;
         factory = factory_;
         splitter = splitter_;
@@ -351,9 +356,19 @@ contract VyntraCurve is ReentrancyGuard, IUnlockCallback {
         uint256 amount = creatorFees;
         if (amount == 0) return;
         creatorFees = 0;
-        (bool sent,) = payable(creator).call{value: amount}("");
+        address recipient = creatorFeeRecipient;
+        (bool sent,) = payable(recipient).call{value: amount}("");
         require(sent, "CREATOR_SEND");
-        emit FeesClaimed(creator, amount);
+        emit FeesClaimed(recipient, amount);
+    }
+
+    /// @notice Lets the launch creator redirect future and unclaimed creator fees.
+    function setCreatorFeeRecipient(address recipient) external {
+        if (msg.sender != creator) revert BadConfig();
+        if (recipient == address(0)) revert BadConfig();
+        address previous = creatorFeeRecipient;
+        creatorFeeRecipient = recipient;
+        emit CreatorFeeRecipientUpdated(previous, recipient);
     }
 
     function claimProtocolFees() external nonReentrant {
@@ -609,7 +624,7 @@ contract VyntraCurve is ReentrancyGuard, IUnlockCallback {
         uint256 creatorCut = FullMath.mulDiv(nativeFees, CREATOR_FEE_SHARE_BPS, BPS);
         creatorFees += creatorCut;
         protocolFees += nativeFees - creatorCut;
-        if (tokenFees > 0 && !token.transfer(creator, tokenFees)) revert BadPoolDelta();
+        if (tokenFees > 0 && !token.transfer(creatorFeeRecipient, tokenFees)) revert BadPoolDelta();
         emit V4FeesCollected(creatorCut, nativeFees - creatorCut, tokenFees);
     }
 

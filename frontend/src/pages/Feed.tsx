@@ -6,7 +6,12 @@ import { TokenCard } from '../components/TokenCard'
 import { PlatformTokenCard } from '../components/PlatformTokenCard'
 import { useLaunches } from '../hooks/useLaunches'
 import { useWatchlist } from '../hooks/useWatchlist'
-import { formatNative, VYNTRA_PROMOTION, type LaunchView } from '../lib/config'
+import {
+  formatNative,
+  LEGACY_VYNTRA_PROMOTION,
+  VYNTRA_PROMOTION,
+  type LaunchView,
+} from '../lib/config'
 import { formatUserError } from '../lib/errors'
 import { HypeUsd } from '../components/HypeUsd'
 import { vyntraPromotionAbi } from '../lib/abis'
@@ -18,35 +23,41 @@ export function Feed() {
   const { data: launches = [], isLoading, isError, error, refetch, isFetching } = useLaunches()
   const { ids: watchIds, count: watchCount } = useWatchlist()
 
+  const promotionAddresses = useMemo(
+    () => [VYNTRA_PROMOTION, LEGACY_VYNTRA_PROMOTION]
+      .filter((address): address is NonNullable<typeof address> => Boolean(address))
+      .filter((address, index, all) => all.findIndex((other) => other.toLowerCase() === address.toLowerCase()) === index),
+    [],
+  )
   const promotionReads = useMemo(
-    () => (VYNTRA_PROMOTION
-      ? launches.map((launch) => ({
-          address: VYNTRA_PROMOTION,
+    () => (promotionAddresses.length > 0
+      ? launches.flatMap((launch) => promotionAddresses.map((address) => ({
+          address,
           abi: vyntraPromotionAbi,
           functionName: 'featuredUntil' as const,
           args: [launch.token] as const,
-        }))
+        })))
       : []),
-    [launches],
+    [launches, promotionAddresses],
   )
   const { data: promotionResults } = useReadContracts({
     contracts: promotionReads,
     query: {
-      enabled: Boolean(VYNTRA_PROMOTION && promotionReads.length > 0),
+      enabled: Boolean(promotionAddresses.length > 0 && promotionReads.length > 0),
       refetchInterval: 30_000,
     },
   })
   const featuredUntilByToken = useMemo(() => {
     const untilByToken = new Map<string, number>()
     launches.forEach((launch, index) => {
-      const result = promotionResults?.[index]
-      untilByToken.set(
-        launch.token.toLowerCase(),
-        result?.status === 'success' ? Number(result.result) : 0,
-      )
+      const until = promotionAddresses.reduce((latest, _address, promotionIndex) => {
+        const result = promotionResults?.[index * promotionAddresses.length + promotionIndex]
+        return result?.status === 'success' ? Math.max(latest, Number(result.result)) : latest
+      }, 0)
+      untilByToken.set(launch.token.toLowerCase(), until)
     })
     return untilByToken
-  }, [launches, promotionResults])
+  }, [launches, promotionAddresses, promotionResults])
 
   const filtered = useMemo(() => {
     const list = [...launches]
