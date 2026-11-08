@@ -69,29 +69,9 @@ async function uploadViaLocalProxy(file: File): Promise<string | null> {
   return data.url && /^https?:\/\//i.test(data.url) ? data.url : null
 }
 
-async function uploadViaImgbb(file: File): Promise<string | null> {
-  const key = import.meta.env.VITE_IMGBB_API_KEY as string | undefined
-  if (!key) return null
-
-  const form = new FormData()
-  form.append('key', key)
-  form.append('image', await blobToBase64(file))
-  form.append('name', file.name)
-
-  const res = await fetch('https://api.imgbb.com/1/upload', {
-    method: 'POST',
-    body: form,
-    signal: AbortSignal.timeout(30_000),
-  })
-  if (!res.ok) return null
-  const data = (await res.json()) as { data?: { url?: string; display_url?: string } }
-  const url = data.data?.display_url || data.data?.url
-  return url && /^https?:\/\//i.test(url) ? url : null
-}
-
 /**
  * Compress then host the image.
- * Tries `/api/upload-image` (multi-host server), then optional ImgBB.
+ * The server endpoint handles permanent image hosts without exposing an API key in the client.
  * Returns a public https URL for on-chain imageURI.
  */
 export async function uploadTokenImage(file: File): Promise<string> {
@@ -101,17 +81,10 @@ export async function uploadTokenImage(file: File): Promise<string> {
     const viaProxy = await uploadViaLocalProxy(compressed)
     if (viaProxy) return viaProxy
   } catch {
-    // proxy missing — fall through
-  }
-
-  try {
-    const viaImgbb = await uploadViaImgbb(compressed)
-    if (viaImgbb) return viaImgbb
-  } catch {
-    // ignore
+    // The endpoint may be unavailable locally; allow the error below to explain the issue.
   }
 
   throw new Error(
-    'Image upload failed. Paste a public image URL below (https://…), then launch.',
+    'Image upload failed. Check the upload endpoint or paste a public image URL that will stay available.',
   )
 }

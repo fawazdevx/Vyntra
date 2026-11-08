@@ -54,7 +54,9 @@ Health should report chain ID `99801`. Set the frontend `VITE_INDEXER_URL` to th
 `/api`, then redeploy the frontend.
 
 Vercel syncs on API requests when the index is stale and uses the configured Cron schedule as a
-backup. Use a separate Turso database for each chain deployment so launch and volume data cannot mix.
+backup. The configured start blocks are also lower bounds for existing Turso cursors, so a database
+that contains an earlier deployment cursor will advance to the current deployment start. Use a
+separate Turso database for each chain deployment so launch and volume data cannot mix.
 
 ## API
 

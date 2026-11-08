@@ -29,6 +29,12 @@ const client = createPublicClient({
   transport: http(RPC_URL),
 })
 
+/** A new deployment block setting must take effect even when Turso has an older cursor. */
+function nextBlock(last: string | null, configuredStart: bigint): bigint {
+  const checkpoint = last ? BigInt(last) + 1n : configuredStart
+  return checkpoint > configuredStart ? checkpoint : configuredStart
+}
+
 async function upsertLaunchFromSpawn(args: {
   id: number
   token: Address
@@ -216,7 +222,7 @@ async function syncVyntraMarketTrades(
   if (!VYNTRA_MARKET_ADDRESS) return 0
 
   const last = await getMeta('last_vyntra_market_block')
-  const from = last ? BigInt(last) + 1n : VYNTRA_MARKET_START_BLOCK
+  const from = nextBlock(last, VYNTRA_MARKET_START_BLOCK)
   if (from > chainSafeTo) return 0
 
   const chunkSize = BigInt(Math.max(1, Math.floor(LOG_CHUNK || 2_000)))
@@ -308,7 +314,7 @@ async function syncReserveEvents(chainSafeTo: bigint, tsCache: Map<string, numbe
   if (!VYNTRA_RESERVE_VAULT_ADDRESS) return 0
 
   const last = await getMeta('last_reserve_block')
-  const from = last ? BigInt(last) + 1n : VYNTRA_RESERVE_START_BLOCK
+  const from = nextBlock(last, VYNTRA_RESERVE_START_BLOCK)
   if (from > chainSafeTo) return 0
 
   const eventNames = [
@@ -389,7 +395,7 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
   const chainSafeTo = latest > BigInt(CONFIRMATIONS) ? latest - BigInt(CONFIRMATIONS) : 0n
 
   const last = await getMeta('last_block')
-  let from = last ? BigInt(last) + 1n : START_BLOCK
+  const from = nextBlock(last, START_BLOCK)
   await setMeta('factory', factory)
   await setMeta('chain_id', String(CHAIN_ID))
 

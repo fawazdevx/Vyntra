@@ -5,7 +5,7 @@ import { ConnectButton } from '@rainbow-me/rainbowkit'
 import { Briefcase, ExternalLink } from 'lucide-react'
 import { activeChain } from '../lib/chains'
 import { HypeUsd } from '../components/HypeUsd'
-import { explorerTx, formatNative, shortAddr } from '../lib/config'
+import { explorerTx, formatNative, isHiddenLaunchId, shortAddr } from '../lib/config'
 import {
   fetchPortfolioFromIndexer,
   fetchWalletTradesFromIndexer,
@@ -81,13 +81,33 @@ export function Portfolio() {
   }, [address])
 
   const openPositions = useMemo(
-    () => portfolio?.positions.filter((p) => p.heldToken > 1e-12) ?? [],
+    () => portfolio?.positions.filter((p) => !isHiddenLaunchId(p.launchId) && p.heldToken > 1e-12) ?? [],
     [portfolio],
   )
   const closedPositions = useMemo(
-    () => portfolio?.positions.filter((p) => p.heldToken <= 1e-12) ?? [],
+    () => portfolio?.positions.filter((p) => !isHiddenLaunchId(p.launchId) && p.heldToken <= 1e-12) ?? [],
     [portfolio],
   )
+  const visibleHistory = useMemo(
+    () => history?.trades.filter((trade) => !isHiddenLaunchId(trade.launchId)) ?? [],
+    [history],
+  )
+  const summary = useMemo(() => {
+    if (!portfolio) return null
+    const positions = portfolio.positions.filter((position) => !isHiddenLaunchId(position.launchId))
+    return {
+      ...portfolio.summary,
+      positionCount: positions.length,
+      openCount: positions.filter((position) => position.heldToken > 1e-12).length,
+      tradeCount: positions.reduce((total, position) => total + position.tradeCount, 0),
+      spentNative: positions.reduce((total, position) => total + position.spentNative, 0),
+      receivedNative: positions.reduce((total, position) => total + position.receivedNative, 0),
+      heldValueNative: positions.reduce((total, position) => total + position.heldToken * position.lastPrice, 0),
+      realizedPnlNative: positions.reduce((total, position) => total + position.realizedPnlNative, 0),
+      unrealizedPnlNative: positions.reduce((total, position) => total + position.unrealizedPnlNative, 0),
+      totalPnlNative: positions.reduce((total, position) => total + position.totalPnlNative, 0),
+    }
+  }, [portfolio])
 
   if (!isIndexerConfigured) {
     return (
@@ -116,7 +136,7 @@ export function Portfolio() {
     )
   }
 
-  const s = portfolio?.summary
+  const s = summary
 
   return (
     <div className="space-y-6">
@@ -212,7 +232,7 @@ export function Portfolio() {
           <div className="border-b border-[var(--vyntra-border)] px-4 py-3.5 font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--vyntra-muted)] sm:px-5">
             Recent trades
           </div>
-          {!history?.trades?.length ? (
+          {!visibleHistory.length ? (
             <div className="px-4 py-12 text-center text-[var(--vyntra-muted)]">No trades yet</div>
           ) : (
             <div className="max-h-[520px] overflow-y-auto">
@@ -227,7 +247,7 @@ export function Portfolio() {
                   </tr>
                 </thead>
                 <tbody>
-                  {history.trades.map((t) => (
+                  {visibleHistory.map((t) => (
                     <tr key={`${t.txHash}-${t.side}-${t.timestamp}`} className="border-t border-[var(--vyntra-border)]">
                       <td className="px-4 py-3 font-mono text-xs text-[var(--vyntra-muted)] sm:px-5">
                         {fmtTime(t.timestamp)}

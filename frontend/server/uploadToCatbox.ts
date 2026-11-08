@@ -57,23 +57,21 @@ async function uploadCatbox(blob: Blob, filename: string): Promise<string | null
   )
 }
 
-async function uploadLitterbox(blob: Blob, filename: string): Promise<string | null> {
+async function uploadImgBB(blob: Blob, filename: string): Promise<string | null> {
+  const key = process.env.IMGBB_API_KEY
+  if (!key) return null
   return postMultipart(
-    'https://litterbox.catbox.moe/resources/internals/api.php',
-    { reqtype: 'fileupload', time: '72h' },
-    'fileToUpload',
+    'https://api.imgbb.com/1/upload',
+    { key, name: filename.replace(/\.[^.]+$/, '') },
+    'image',
     blob,
     filename,
   )
 }
 
-async function uploadZeroXZero(blob: Blob, filename: string): Promise<string | null> {
-  return postMultipart('https://0x0.st', {}, 'file', blob, filename)
-}
-
 /**
  * Shared upload used by Vite middleware and Vercel `/api/upload-image`.
- * Tries Catbox → Litterbox → 0x0.st so launches keep working if one host is down.
+ * Tries longer-lived hosts only. Temporary links must not be written into immutable token metadata.
  */
 export async function uploadToCatbox(payload: UploadPayload): Promise<UploadOk | UploadErr> {
   const built = buildFile(payload)
@@ -88,8 +86,7 @@ export async function uploadToCatbox(payload: UploadPayload): Promise<UploadOk |
 
   for (const [name, fn] of [
     ['catbox', uploadCatbox],
-    ['litterbox', uploadLitterbox],
-    ['0x0', uploadZeroXZero],
+    ['imgbb', uploadImgBB],
   ] as const) {
     try {
       const url = await fn(blob, safeName)

@@ -22,6 +22,18 @@ export const isAppConfigured = Boolean(parsedFactory)
 /** Factory address; zero address when not configured (hooks should be disabled via isAppConfigured). */
 export const FACTORY_ADDRESS = (parsedFactory ?? ZERO_ADDRESS) as Address
 
+const hiddenLaunchIds = new Set(
+  String(import.meta.env.VITE_HIDDEN_LAUNCH_IDS ?? '')
+    .split(',')
+    .map((value) => Number(value.trim()))
+    .filter((id) => Number.isSafeInteger(id) && id > 0),
+)
+
+/** Launch IDs hidden from Vyntra's UI, for example registry entries imported from an old factory. */
+export function isHiddenLaunchId(id: number | null | undefined): boolean {
+  return id != null && hiddenLaunchIds.has(id)
+}
+
 /** Platform token + buyback stack (set after economy deploy). */
 export const VYNTRA_TOKEN = optionalAddress(
   import.meta.env.VITE_VYNTRA_TOKEN ?? import.meta.env.VITE_SPAWN_TOKEN,

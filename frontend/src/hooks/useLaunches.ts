@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { usePublicClient, useWatchContractEvent } from 'wagmi'
 import { formatEther, type Address, zeroAddress } from 'viem'
 import { bondingCurveAbi, erc20Abi, spawnFactoryAbi } from '../lib/abis'
-import { FACTORY_ADDRESS, isAppConfigured, type LaunchView } from '../lib/config'
+import { FACTORY_ADDRESS, isAppConfigured, isHiddenLaunchId, type LaunchView } from '../lib/config'
 import {
   fetchLaunchFromIndexer,
   fetchLaunchesFromIndexer,
@@ -157,9 +157,10 @@ export function useLaunches() {
       // so Markets shows a brand-new spawn immediately after create/buy.
       const indexed =
         isIndexerConfigured ? await fetchLaunchesFromIndexer() : null
+      const visibleIndexed = indexed?.filter((launch) => !isHiddenLaunchId(launch.id))
 
       if (!publicClient || !isAppConfigured) {
-        return (indexed ?? []) as LaunchView[]
+        return (visibleIndexed ?? []) as LaunchView[]
       }
 
       const count = await publicClient.readContract({
@@ -171,9 +172,11 @@ export function useLaunches() {
       if (n === 0) return [] as LaunchView[]
 
       const byId = new Map<number, LaunchView>()
-      for (const launch of indexed ?? []) byId.set(launch.id, launch)
+      for (const launch of visibleIndexed ?? []) byId.set(launch.id, launch)
 
-      const missing = Array.from({ length: n }, (_, i) => i + 1).filter((id) => !byId.has(id))
+      const missing = Array.from({ length: n }, (_, i) => i + 1).filter(
+        (id) => !isHiddenLaunchId(id) && !byId.has(id),
+      )
       if (missing.length > 0) {
         const fetched = await Promise.all(
           missing.map((id) => fetchLaunch(publicClient, BigInt(id))),
@@ -181,7 +184,9 @@ export function useLaunches() {
         for (const launch of fetched) byId.set(launch.id, launch)
       }
 
-      return Array.from(byId.values()).sort((a, b) => b.createdAt - a.createdAt)
+      return Array.from(byId.values())
+        .filter((launch) => !isHiddenLaunchId(launch.id))
+        .sort((a, b) => b.createdAt - a.createdAt)
     },
   })
 
@@ -214,6 +219,7 @@ export function useLaunch(id?: string | number) {
     enabled:
       Number.isFinite(numericId) &&
       numericId > 0 &&
+      !isHiddenLaunchId(numericId) &&
       ((Boolean(publicClient) && isAppConfigured) || isIndexerConfigured),
     refetchInterval: 8_000,
     queryFn: async () => {
