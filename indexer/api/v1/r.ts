@@ -2,6 +2,7 @@ import { qAll, qOne } from '../../src/edge-db.js'
 import { jsonCors, optionsOk, withCors } from '../../src/edge-cors.js'
 import { maybeSyncEdge } from '../../src/edge-sync.js'
 import { getHolders, getSnipers } from '../../src/analytics.js'
+import { VYNTRA_MARKET_ADDRESS, VYNTRA_MARKET_START_BLOCK } from '../../src/config.js'
 
 export const config = { runtime: 'edge' }
 
@@ -71,6 +72,46 @@ export default async function handler(req: Request) {
         last = time
       }
       return jsonCors({ trades })
+    }
+
+    if (kind === 'platform_trades') {
+      const rows = await qAll(
+        `SELECT side, trader, native_amount, token_amount, price, mcap,
+                block_number, tx_hash, log_index, timestamp
+         FROM platform_trades
+         WHERE block_number >= ?
+         ORDER BY timestamp DESC, block_number DESC, log_index DESC
+         LIMIT ?`,
+        [Number(VYNTRA_MARKET_START_BLOCK), limit],
+      )
+      rows.reverse()
+      const trades = []
+      let last = 0
+      for (const r of rows) {
+        let time = Number(r.timestamp)
+        if (time <= last) time = last + 1
+        trades.push({
+          time,
+          price: Number(r.price),
+          mcap: Number(r.mcap),
+          amountNative: Number(r.native_amount),
+          amountToken: Number(r.token_amount),
+          side: r.side,
+          trader: r.trader,
+          txHash: r.tx_hash,
+          blockNumber: Number(r.block_number),
+        })
+        last = time
+      }
+      const cursor = await qOne(
+        'SELECT value FROM meta WHERE key = ?',
+        ['last_vyntra_market_block'],
+      )
+      return jsonCors({
+        market: VYNTRA_MARKET_ADDRESS ?? null,
+        trades,
+        lastBlock: cursor?.value ?? null,
+      })
     }
 
     if (kind === 'ohlcv') {

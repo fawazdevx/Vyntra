@@ -67,6 +67,7 @@ backup. Use a separate Turso database for each chain deployment so launch and vo
 | GET | `/api/v1/launches?sort=trending\|new\|volume` | Launch list |
 | GET | `/api/v1/launches/:id` | One launch |
 | GET | `/api/v1/launches/:id/trades` | Trade tape |
+| GET | `/api/v1/platform-trades` | Current VYNTRA market tape from `VYNTRA_MARKET_START_BLOCK` |
 | GET | `/api/v1/launches/:id/ohlcv?interval=300` | Candles |
 | GET | `/api/v1/launches/:id/replies` | Board replies |
 | GET | `/api/v1/launches/:id/holders` | Holders |

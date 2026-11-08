@@ -1,5 +1,9 @@
 import { queryAll } from './db.js'
-import { VYNTRA_MARKET_ADDRESS, VYNTRA_TOKEN_ADDRESS } from './config.js'
+import {
+  VYNTRA_MARKET_ADDRESS,
+  VYNTRA_MARKET_START_BLOCK,
+  VYNTRA_TOKEN_ADDRESS,
+} from './config.js'
 
 export type PortfolioPosition = {
   launchId: number | null
@@ -133,9 +137,9 @@ export async function getPortfolio(address: string): Promise<{
     }>(
       `SELECT side, native_amount, token_amount, price, timestamp, block_number, log_index
        FROM platform_trades
-       WHERE LOWER(trader) = ?
+       WHERE LOWER(trader) = ? AND block_number >= ?
        ORDER BY timestamp ASC, block_number ASC, log_index ASC`,
-      [wallet],
+      [wallet, Number(VYNTRA_MARKET_START_BLOCK)],
     ),
   ])
 
@@ -246,8 +250,10 @@ export async function getPortfolio(address: string): Promise<{
     ),
     queryAll<{ price: number }>(
       `SELECT price FROM platform_trades
+       WHERE block_number >= ?
        ORDER BY block_number DESC, log_index DESC
        LIMIT 1`,
+      [Number(VYNTRA_MARKET_START_BLOCK)],
     ),
   ])
   const priceMap = new Map(lastPrices.map((r) => [r.launch_id, r.price]))
@@ -344,10 +350,10 @@ export async function getWalletTrades(
       `SELECT side, native_amount, token_amount, price, mcap, fee,
               timestamp, block_number, tx_hash, log_index, trader
        FROM platform_trades
-       WHERE LOWER(trader) = ?
+       WHERE LOWER(trader) = ? AND block_number >= ?
        ORDER BY timestamp DESC, id DESC
        LIMIT ?`,
-      [wallet, lim],
+      [wallet, Number(VYNTRA_MARKET_START_BLOCK), lim],
     ),
   ])
 

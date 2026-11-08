@@ -8,6 +8,8 @@ import {
   FACTORY_ADDRESS,
   RPC_URL,
   SYNC_STALE_SEC,
+  VYNTRA_MARKET_ADDRESS,
+  VYNTRA_MARKET_START_BLOCK,
 } from './config.js'
 import { ensureSchema, getMeta, queryAll, queryOne, type LaunchRow, type TradeRow } from './db.js'
 import { buildOhlcv } from './ohlcv.js'
@@ -144,10 +146,11 @@ export function createApp(opts: { basePath?: string } = {}) {
         SUM(CASE WHEN graduated = 1 OR migrated = 1 THEN 1 ELSE 0 END) AS graduated,
         COALESCE(SUM(raised_native), 0) AS raised_native,
         COALESCE(SUM(volume_native), 0) +
-          COALESCE((SELECT SUM(native_amount) FROM platform_trades), 0) AS volume_native,
+          COALESCE((SELECT SUM(native_amount) FROM platform_trades WHERE block_number >= ?), 0) AS volume_native,
         COALESCE(SUM(trade_count), 0) +
-          COALESCE((SELECT COUNT(*) FROM platform_trades), 0) AS trades
+          COALESCE((SELECT COUNT(*) FROM platform_trades WHERE block_number >= ?), 0) AS trades
        FROM launches`,
+      [Number(VYNTRA_MARKET_START_BLOCK), Number(VYNTRA_MARKET_START_BLOCK)],
     )
     return c.json({
       launches: Number(row?.launches || 0),
@@ -244,6 +247,43 @@ export function createApp(opts: { basePath?: string } = {}) {
       last = time
     }
     return c.json({ trades })
+  })
+
+  app.get('/v1/platform-trades', async (c) => {
+    const limit = Math.min(Math.max(Number(c.req.query('limit') || 1000), 1), 5000)
+    const rows = await queryAll<Record<string, unknown>>(
+      `SELECT side, trader, native_amount, token_amount, price, mcap,
+              block_number, tx_hash, log_index, timestamp
+       FROM platform_trades
+       WHERE block_number >= ?
+       ORDER BY timestamp DESC, block_number DESC, log_index DESC
+       LIMIT ?`,
+      [Number(VYNTRA_MARKET_START_BLOCK), limit],
+    )
+    rows.reverse()
+    const trades = []
+    let last = 0
+    for (const row of rows) {
+      let time = Number(row.timestamp)
+      if (time <= last) time = last + 1
+      trades.push({
+        time,
+        price: Number(row.price),
+        mcap: Number(row.mcap),
+        amountNative: Number(row.native_amount),
+        amountToken: Number(row.token_amount),
+        side: row.side,
+        trader: row.trader,
+        txHash: row.tx_hash,
+        blockNumber: Number(row.block_number),
+      })
+      last = time
+    }
+    return c.json({
+      market: VYNTRA_MARKET_ADDRESS ?? null,
+      trades,
+      lastBlock: await getMeta('last_vyntra_market_block'),
+    })
   })
 
   app.get('/v1/launches/:id/ohlcv', async (c) => {

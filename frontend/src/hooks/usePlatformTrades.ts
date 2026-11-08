@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { usePublicClient, useWatchContractEvent } from 'wagmi'
 import { formatEther, type Address } from 'viem'
 import { vyntraMarketAbi } from '../lib/abis'
+import { fetchPlatformTradesFromIndexer, isIndexerConfigured } from '../lib/indexer'
 import type { TradePoint } from './useTradeHistory'
 
 const TOTAL_SUPPLY = 1_000_000_000
@@ -103,7 +104,13 @@ export function usePlatformTrades(market?: Address) {
     enabled,
     staleTime: 12_000,
     refetchInterval: 20_000,
-    queryFn: () => fetchPlatformTrades(publicClient!, market!),
+    queryFn: async () => {
+      if (isIndexerConfigured) {
+        const indexedTrades = await fetchPlatformTradesFromIndexer(market)
+        if (indexedTrades !== null) return indexedTrades
+      }
+      return fetchPlatformTrades(publicClient!, market!)
+    },
   })
 
   useWatchContractEvent({

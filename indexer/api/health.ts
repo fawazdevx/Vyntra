@@ -9,6 +9,11 @@ export default function handler(req: Request) {
   if (req.method === 'OPTIONS') return optionsOk()
   const factory =
     process.env.FACTORY_ADDRESS || process.env.VITE_FACTORY_ADDRESS || null
+  const vyntraMarket =
+    process.env.VYNTRA_MARKET_ADDRESS ||
+    process.env.VITE_VYNTRA_MARKET ||
+    process.env.VITE_SPAWN_MARKET ||
+    null
   const tursoUrl = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || ''
   return jsonCors({
     ok: true,
@@ -22,6 +27,11 @@ export default function handler(req: Request) {
     chainId: Number(
       process.env.INDEXER_CHAIN_ID || 99801,
     ),
+    vyntraMarket,
+    vyntraMarketStartBlock:
+      process.env.VYNTRA_MARKET_START_BLOCK ||
+      process.env.INDEXER_START_BLOCK ||
+      null,
     rpc:
       process.env.INDEXER_RPC_URL ||
       process.env.ELYSIUM_TESTNET_RPC_URL ||

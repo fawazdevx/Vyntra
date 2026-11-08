@@ -1,6 +1,7 @@
 import { jsonCors, optionsOk } from '../../src/edge-cors.js'
 import { maybeSyncEdge } from '../../src/edge-sync.js'
 import { createClient } from '@libsql/client/web'
+import { VYNTRA_MARKET_START_BLOCK } from '../../src/config.js'
 
 export const config = { runtime: 'edge' }
 
@@ -18,18 +19,19 @@ export default async function handler(req?: Request) {
 
   try {
     const db = createClient({ url, authToken })
-    const rs = await db.execute(`
+    const platformStartBlock = Number(VYNTRA_MARKET_START_BLOCK)
+    const rs = await db.execute({ sql: `
       SELECT
         COUNT(*) AS launches,
         SUM(CASE WHEN graduated = 0 AND migrated = 0 THEN 1 ELSE 0 END) AS on_curve,
         SUM(CASE WHEN graduated = 1 OR migrated = 1 THEN 1 ELSE 0 END) AS graduated,
         COALESCE(SUM(raised_native), 0) AS raised_native,
         COALESCE(SUM(volume_native), 0) +
-          COALESCE((SELECT SUM(native_amount) FROM platform_trades), 0) AS volume_native,
+          COALESCE((SELECT SUM(native_amount) FROM platform_trades WHERE block_number >= ?), 0) AS volume_native,
         COALESCE(SUM(trade_count), 0) +
-          COALESCE((SELECT COUNT(*) FROM platform_trades), 0) AS trades
+          COALESCE((SELECT COUNT(*) FROM platform_trades WHERE block_number >= ?), 0) AS trades
       FROM launches
-    `)
+    `, args: [platformStartBlock, platformStartBlock] })
     const row = rs.rows[0] || {}
     const meta = await db.execute(`SELECT key, value FROM meta WHERE key IN ('last_block', 'last_sync_at')`)
     const metaMap: Record<string, string> = {}

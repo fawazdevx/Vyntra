@@ -104,6 +104,39 @@ export async function fetchTradesFromIndexer(launchId: number): Promise<TradePoi
   }))
 }
 
+export async function fetchPlatformTradesFromIndexer(
+  expectedMarket?: Address,
+): Promise<TradePoint[] | null> {
+  const data = await getJson<{
+    market: string | null
+    trades: Array<{
+      time: number
+      price: number
+      mcap: number
+      amountNative: number
+      amountToken: number
+      side: 'buy' | 'sell'
+      trader: string
+      txHash: string
+    }>
+  }>('/v1/platform-trades?limit=5000')
+  if (!data?.trades) return null
+  if (
+    expectedMarket &&
+    (!data.market || expectedMarket.toLowerCase() !== data.market.toLowerCase())
+  ) return null
+  return data.trades.map((trade) => ({
+    time: trade.time,
+    price: trade.price,
+    mcap: trade.mcap,
+    amountNative: trade.amountNative,
+    amountToken: trade.amountToken,
+    side: trade.side,
+    trader: trade.trader as Address,
+    txHash: trade.txHash as `0x${string}`,
+  }))
+}
+
 export async function fetchOhlcvFromIndexer(
   launchId: number,
   intervalSec = 300,
