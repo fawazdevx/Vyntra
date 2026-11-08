@@ -97,7 +97,7 @@ const docPages: DocPage[] = [
       },
       {
         title: 'What launch does',
-        body: <p>The factory creates a fixed 1 billion token supply and opens a linear HYPE curve: 600 million tokens are offered to buyers and 400 million are reserved for the graduation pool. The curve begins at one third of its terminal price and rises smoothly; when its sale allocation is exhausted, the raised HYPE and reserved tokens initialize a no-hook Uniswap v4 pool in the same transaction. The Vyntra position is locked. Each new token address must end in <code>7f7</code>; the factory checks this on-chain.</p>,
+        body: <p>The factory creates a fixed 1 billion token supply and opens a linear HYPE curve: 600 million tokens are offered to buyers and 400 million are reserved for the graduation pool. The curve begins at one third of its terminal price and rises smoothly; when its sale allocation is exhausted, the raised HYPE and reserved tokens initialize a no-hook Uniswap v4 pool in the same transaction. The Vyntra position is locked. Creator token addresses must end in <code>7f7</code>; the factory checks this on-chain. The platform token also uses this suffix on deployments made with the current deployment script.</p>,
       },
       {
         title: 'No required opening buy',
@@ -202,6 +202,7 @@ const docPages: DocPage[] = [
           ['VyntraMarketDeployer', 'Creates the bonding-curve market contracts for new launches.'],
           ['VyntraCurve', 'Per-token market: curve trading, fees, creator claims, graduation, and locked Uniswap v4 liquidity.'],
           ['VYNTRA', 'Fixed-supply platform token paired with HYPE in the platform market.'],
+          ['VyntraPlatformTokenDeployer', 'Uses CREATE2 to deploy the platform token with the 0x7f7 address suffix.'],
           ['VyntraMarket', 'The HYPE/VYNTRA market and platform-token quote source.'],
           ['VyntraReserveTimelock', 'Enforces the public delay for reserve release proposals.'],
           ['VyntraReserveVault', 'Holds the platform-token reserve and applies allocation and release limits.'],

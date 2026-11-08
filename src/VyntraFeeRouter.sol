@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title VyntraFeeRouter
-/// @notice Protocol fee sink: 80% → buyback vault, 20% → ops treasury (Pons-style).
+/// @notice Protocol fee sink: 80% goes to the buyback vault and 20% to the operations treasury.
 contract VyntraFeeRouter is ReentrancyGuard {
     uint256 public constant BPS = 10_000;
     uint256 public constant BUYBACK_BPS = 8_000; // 80%

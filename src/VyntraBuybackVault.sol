@@ -6,7 +6,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {VyntraMarket} from "./VyntraMarket.sol";
 
 /// @title VyntraBuybackVault
-/// @notice Holds protocol HYPE and permissionlessly buys VYNTRA to burn (Pons-style).
+/// @notice Holds protocol HYPE and permissionlessly buys VYNTRA to burn.
 contract VyntraBuybackVault is ReentrancyGuard {
     uint256 public constant BPS = 10_000;
     uint256 public constant MAX_RESERVE_BPS_PER_BUYBACK = 50; // 0.5% of current HYPE-side reserves

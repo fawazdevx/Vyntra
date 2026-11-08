@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /// @title VYNTRA
-/// @notice Platform token for Vyntra (Pons/Argus-style buyback sink). Fixed 1B supply.
+/// @notice Fixed-supply Vyntra platform token used by the protocol buyback system.
 contract VYNTRA is ERC20 {
     uint256 public constant TOTAL_SUPPLY = 1_000_000_000 ether;
 

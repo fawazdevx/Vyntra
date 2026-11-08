@@ -138,6 +138,8 @@ Token-denominated LP fees are sent to the creator when the position fees are col
 
 Deploy opens a buyer-funded HYPE/VYNTRA market. Buyers trade against a 30 million VYNTRA curve allocation; the remaining 20 million market allocation joins the raised HYPE in the locked V4 pool at graduation. The deployer supplies no HYPE seed. As meme volume grows, protocol fees push HYPE into that market, buy VYNTRA, and send it to the burn address.
 
+The current full deployment script uses `VyntraPlatformTokenDeployer` and CREATE2 to give newly deployed platform tokens the same `7f7` suffix enforced for creator launches. This does not change the address of an already deployed VYNTRA token; a full redeployment is required.
+
 The deployment allocates 50 million VYNTRA (5%) to its market (30M curve sale, 20M locked pool allocation at graduation) and places the remaining 950 million in a policy vault: 190M community and creator incentives, 142.5M ecosystem grants, and 617.5M unallocated. The treasury Safe proposes reserve actions through a 30-day timelock. Disclosed campaigns share a 50M VYNTRA rolling 365-day release cap; unclaimed tokens return to their original budget without restoring cap capacity. Protocol buybacks are limited to 0.5% of market HYPE reserves per transaction and at least six hours apart. Creators can also spend VYNTRA on labeled featured placement; those fees are sent to the burn address.
 
 **Intended flywheel:** more launches and volume can create more protocol revenue, paced buybacks, and token burns. This depends on actual usage; it does not guarantee token demand or price appreciation.
@@ -167,6 +169,7 @@ The deployment allocates 50 million VYNTRA (5%) to its market (30M curve sale, 2
 | `PoolManager` | Vyntra-owned deployment of Uniswap v4 core with protocol-fee governance renounced |
 | `VyntraCurve` | Linear buyer-funded curve, automatic V4 graduation, fees, early-buy cap, permanent position custody |
 | `VYNTRA` | Platform ERC-20 |
+| `VyntraPlatformTokenDeployer` | Deploys the platform token with the `7f7` suffix using CREATE2 |
 | `VyntraMarket` | Buyer-funded VYNTRA curve that graduates into a no-hook V4 pool with locked liquidity |
 | `VyntraReserveTimelock` | 30-day public delay; sole proposer is the treasury Safe |
 | `VyntraReserveVault` | Holds the 950M reserve, tracks allocations, and enforces campaign release limits |

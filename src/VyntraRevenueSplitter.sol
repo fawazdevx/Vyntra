@@ -10,7 +10,7 @@ interface IVyntraCurve {
 }
 
 /// @title VyntraRevenueSplitter
-/// @notice Per-launch Argus-style optional creator buy/sell tax with 4-way HYPE split.
+/// @notice Per-launch optional creator buy/sell tax with a four-way HYPE split.
 contract VyntraRevenueSplitter is ReentrancyGuard {
     uint256 public constant BPS = 10_000;
     address public constant BURN = 0x000000000000000000000000000000000000dEaD;

@@ -13,11 +13,12 @@ import {VyntraKeeper} from "../src/VyntraKeeper.sol";
 import {VyntraReserveTimelock} from "../src/VyntraReserveTimelock.sol";
 import {VyntraReserveVault} from "../src/VyntraReserveVault.sol";
 import {VyntraPromotion} from "../src/VyntraPromotion.sol";
+import {VyntraPlatformTokenDeployer} from "../src/VyntraPlatformTokenDeployer.sol";
 import {PoolManager} from "@uniswap/v4-core/src/PoolManager.sol";
 
 /// @notice Deploy Vyntra economy + factory to Kinetiq Elysium testnet.
 ///
-/// Deploys: V4 PoolManager → VYNTRA → platform market → fee stack → VyntraFactory → VyntraBoard
+/// Deploys: V4 PoolManager → platform token vanity deployer → VYNTRA → platform market → factory and services
 ///
 /// Testnet:
 ///   GRADUATION_THRESHOLD=1000000000000000000000 \
@@ -65,14 +66,26 @@ contract Deploy is Script {
             console2.log("  need roughly", uint256(0.5 ether));
         }
 
+        address deployer = msg.sender;
+
         vm.startBroadcast();
 
         // Deploy a Vyntra-owned PoolManager from Uniswap v4 core. The zero owner permanently
         // disables protocol-fee governance; Vyntra pools use no hooks or mutable fee controller.
         PoolManager poolManager = new PoolManager(protocolFeeOwner);
         VyntraReserveTimelock reserveTimelock = new VyntraReserveTimelock(reserveSafe);
+        VyntraPlatformTokenDeployer platformTokenDeployer = new VyntraPlatformTokenDeployer(deployer);
 
-        VYNTRA vyntraToken = new VYNTRA(msg.sender);
+        vm.stopBroadcast();
+
+        (bytes32 vyntraSalt, address predictedVyntra) = platformTokenDeployer.findVanitySalt();
+        console2.log("VYNTRA vanity salt");
+        console2.logBytes32(vyntraSalt);
+        console2.log("VYNTRA predicted address", predictedVyntra);
+
+        vm.startBroadcast();
+
+        VYNTRA vyntraToken = platformTokenDeployer.deploy(vyntraSalt);
         VyntraReserveVault reserveVault = new VyntraReserveVault(address(vyntraToken), address(reserveTimelock));
         VyntraMarket market = new VyntraMarket(address(vyntraToken), address(poolManager), vyntraThreshold);
         VyntraBuybackVault vault = new VyntraBuybackVault(address(market), address(vyntraToken));
@@ -100,6 +113,7 @@ contract Deploy is Script {
 
         console2.log("--- Deployed ---");
         console2.log("Vyntra Uniswap v4 PoolManager", address(poolManager));
+        console2.log("VyntraPlatformTokenDeployer", address(platformTokenDeployer));
         console2.log("VYNTRA", address(vyntraToken));
         console2.log("VYNTRA reserve balance", reserveAmount);
         console2.log("VyntraReserveTimelock", address(reserveTimelock));

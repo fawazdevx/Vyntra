@@ -101,7 +101,7 @@ export function About() {
         <Fact value="1B" label="Fixed supply per creator token" />
         <Fact value="1%" label="Curve and V4 trade fee" />
         <Fact value="50%" label="Of HYPE pool fees to creators" />
-        <Fact value="0x7f7" label="Recognizable token suffix" />
+        <Fact value="0x7f7" label="Suffix on new platform and launch tokens" />
       </section>
 
       <section>
@@ -124,7 +124,7 @@ export function About() {
           </Principle>
         </div>
         <p className="mt-4 text-xs leading-relaxed text-[var(--vyntra-faint)]">
-          A token ending in 0x7f7 is easier to recognize, but the suffix alone does not prove a launch is from Vyntra. Check that the factory registered the token.
+          New full deployments and creator launches use the 0x7f7 suffix. The existing testnet platform token keeps its current address until redeployed. A suffix alone does not prove a creator token is from Vyntra; check that the factory registered it.
         </p>
       </section>
 
