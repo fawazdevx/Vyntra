@@ -175,7 +175,10 @@ export function usePlatformTrades(market?: Address) {
           logIndex: log.logIndex == null ? undefined : Number(log.logIndex),
         }
       })).then((rows) => addLiveTrades(rows.filter((row): row is TradePoint => row != null)))
-        .catch(() => undefined)
+        .catch((error) => console.warn('[Vyntra] VYNTRA buy event could not be added:', error instanceof Error ? error.name : 'unknown error'))
+    },
+    onError(error) {
+      console.warn('[Vyntra] VYNTRA buy event stream error:', error.name)
     },
   })
 
@@ -209,7 +212,10 @@ export function usePlatformTrades(market?: Address) {
           logIndex: log.logIndex == null ? undefined : Number(log.logIndex),
         }
       })).then((rows) => addLiveTrades(rows.filter((row): row is TradePoint => row != null)))
-        .catch(() => undefined)
+        .catch((error) => console.warn('[Vyntra] VYNTRA sell event could not be added:', error instanceof Error ? error.name : 'unknown error'))
+    },
+    onError(error) {
+      console.warn('[Vyntra] VYNTRA sell event stream error:', error.name)
     },
   })
 

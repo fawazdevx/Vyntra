@@ -186,7 +186,10 @@ export function useTradeHistory(curve?: Address, launchId?: number) {
           logIndex: log.logIndex == null ? undefined : Number(log.logIndex),
         }
       })).then((rows) => addLiveTrades(rows.filter((row): row is TradePoint => row != null)))
-        .catch(() => undefined)
+        .catch((error) => console.warn('[Vyntra] Creator buy event could not be added:', error instanceof Error ? error.name : 'unknown error'))
+    },
+    onError(error) {
+      console.warn('[Vyntra] Creator buy event stream error:', error.name)
     },
   })
 
@@ -217,7 +220,10 @@ export function useTradeHistory(curve?: Address, launchId?: number) {
           logIndex: log.logIndex == null ? undefined : Number(log.logIndex),
         }
       })).then((rows) => addLiveTrades(rows.filter((row): row is TradePoint => row != null)))
-        .catch(() => undefined)
+        .catch((error) => console.warn('[Vyntra] Creator sell event could not be added:', error instanceof Error ? error.name : 'unknown error'))
+    },
+    onError(error) {
+      console.warn('[Vyntra] Creator sell event stream error:', error.name)
     },
   })
 

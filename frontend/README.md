@@ -20,6 +20,7 @@ command, and `dist` as the output directory. Set these variables in Production a
 | --- | --- | --- |
 | `VITE_CHAIN_ID` | yes | `99801` |
 | `VITE_ELYSIUM_TESTNET_RPC_URL` | optional | Defaults to `https://testnet-rpc.elysium.kinetiq.xyz` |
+| `VITE_ELYSIUM_TESTNET_WSS_URL` | recommended | Alchemy Elysium Testnet WebSocket URL; used for push-based buy/sell event updates |
 | `VITE_FACTORY_ADDRESS` | yes | Elysium VyntraFactory |
 | `VITE_VYNTRA_TOKEN` | yes | Platform token |
 | `VITE_VYNTRA_MARKET` | yes | Platform HYPE market |
