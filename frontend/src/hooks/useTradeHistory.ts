@@ -1,19 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
+import { useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { usePublicClient, useWatchContractEvent } from 'wagmi'
 import { formatEther, type Address } from 'viem'
 import { bondingCurveAbi } from '../lib/abis'
 import { fetchTradesFromIndexer, isIndexerConfigured } from '../lib/indexer'
+import { mergeTradePoints, type TradePoint } from '../lib/tradeHistory'
 
-export type TradePoint = {
-  time: number
-  price: number
-  mcap: number
-  amountNative: number
-  amountToken: number
-  side: 'buy' | 'sell'
-  trader: Address
-  txHash: `0x${string}`
-}
+export type { TradePoint } from '../lib/tradeHistory'
 
 const TOTAL_SUPPLY = 1_000_000_000
 
@@ -31,21 +24,23 @@ function priceFromSell(nativeOut: bigint, tokensIn: bigint) {
 async function fetchTrades(
   publicClient: NonNullable<ReturnType<typeof usePublicClient>>,
   curve: Address,
+  fromBlock = 0n,
+  toBlock: bigint | 'latest' = 'latest',
 ): Promise<TradePoint[]> {
   const [buys, sells] = await Promise.all([
     publicClient.getContractEvents({
       address: curve,
       abi: bondingCurveAbi,
       eventName: 'Buy',
-      fromBlock: 0n,
-      toBlock: 'latest',
+      fromBlock,
+      toBlock,
     }),
     publicClient.getContractEvents({
       address: curve,
       abi: bondingCurveAbi,
       eventName: 'Sell',
-      fromBlock: 0n,
-      toBlock: 'latest',
+      fromBlock,
+      toBlock,
     }),
   ])
 
@@ -80,6 +75,8 @@ async function fetchTrades(
       side: 'buy',
       trader: e.args.buyer!,
       txHash: e.transactionHash,
+      blockNumber: e.blockNumber == null ? undefined : Number(e.blockNumber),
+      logIndex: e.logIndex == null ? undefined : Number(e.logIndex),
     })
   }
 
@@ -96,6 +93,8 @@ async function fetchTrades(
       side: 'sell',
       trader: e.args.seller!,
       txHash: e.transactionHash,
+      blockNumber: e.blockNumber == null ? undefined : Number(e.blockNumber),
+      logIndex: e.logIndex == null ? undefined : Number(e.logIndex),
     })
   }
 
@@ -115,31 +114,79 @@ async function fetchTrades(
 
 export function useTradeHistory(curve?: Address, launchId?: number) {
   const publicClient = usePublicClient()
+  const queryClient = useQueryClient()
+  const liveTradesRef = useRef<{ scope: string; trades: TradePoint[] }>({ scope: '', trades: [] })
+  const tradeScope = `${publicClient?.chain?.id ?? ''}:${curve?.toLowerCase() ?? ''}:${launchId ?? ''}`
+  const getLiveTrades = () => liveTradesRef.current.scope === tradeScope ? liveTradesRef.current.trades : []
+  const queryKey = ['vyntra', 'trades', curve, launchId, publicClient?.chain?.id, isIndexerConfigured] as const
 
   const query = useQuery({
-    queryKey: ['vyntra', 'trades', curve, launchId, publicClient?.chain?.id, isIndexerConfigured],
+    queryKey,
     enabled: Boolean((publicClient && curve) || (isIndexerConfigured && launchId)),
     refetchInterval: 10_000,
     queryFn: async () => {
-      // Indexer returns [] for unindexed launches (truthy) — fall through to RPC so
-      // charts still render buys made before the daily sync catches up.
+      // An empty indexer response falls through to RPC while the launch is still syncing.
       let indexed: TradePoint[] | null = null
       if (isIndexerConfigured && launchId && launchId > 0) {
         indexed = await fetchTradesFromIndexer(launchId)
-        if (indexed && indexed.length > 0) return indexed
+        if (indexed && indexed.length > 0) {
+          if (!publicClient || !curve) return mergeTradePoints(indexed, getLiveTrades())
+          try {
+            const latest = await publicClient.getBlockNumber()
+            const recentFromBlock = latest > 128n ? latest - 128n : 0n
+            const recent = await fetchTrades(publicClient, curve, recentFromBlock, latest)
+            return mergeTradePoints(indexed, [...recent, ...getLiveTrades()])
+          } catch {
+            return mergeTradePoints(indexed, getLiveTrades())
+          }
+        }
       }
-      if (publicClient && curve) return fetchTrades(publicClient, curve)
-      return indexed ?? ([] as TradePoint[])
+      if (publicClient && curve) {
+        const onChain = await fetchTrades(publicClient, curve)
+        return mergeTradePoints(onChain, getLiveTrades())
+      }
+      return mergeTradePoints(indexed ?? [], getLiveTrades())
     },
   })
+
+  async function addLiveTrades(trades: TradePoint[]) {
+    if (trades.length === 0) return
+    const nextLiveTrades = mergeTradePoints([], [...getLiveTrades(), ...trades]).slice(-500)
+    liveTradesRef.current = { scope: tradeScope, trades: nextLiveTrades }
+    queryClient.setQueryData<TradePoint[]>(queryKey, (current) =>
+      mergeTradePoints(current ?? [], nextLiveTrades),
+    )
+    await query.refetch()
+  }
 
   useWatchContractEvent({
     address: curve,
     abi: bondingCurveAbi,
     eventName: 'Buy',
     enabled: Boolean(curve),
-    onLogs() {
-      query.refetch()
+    onLogs(logs) {
+      if (!publicClient) return
+      void Promise.all(logs.map(async (log) => {
+        if (
+          log.blockNumber == null || !log.transactionHash || log.args.buyer == null ||
+          log.args.nativeIn == null || log.args.tokensOut == null
+        ) return null
+        const block = await publicClient.getBlock({ blockNumber: log.blockNumber })
+        const price = priceFromBuy(log.args.nativeIn, log.args.tokensOut, log.args.fee ?? 0n)
+        return {
+          time: Number(block.timestamp),
+          price,
+          mcap: price * TOTAL_SUPPLY,
+          amountNative: Number(formatEther(log.args.nativeIn)),
+          amountToken: Number(formatEther(log.args.tokensOut)),
+          side: 'buy' as const,
+          trader: log.args.buyer,
+          txHash: log.transactionHash,
+          blockNumber: Number(log.blockNumber),
+          logIndex: log.logIndex == null ? undefined : Number(log.logIndex),
+        }
+      })).then((rows) => addLiveTrades(rows.filter((row): row is TradePoint => row != null)))
+        .catch(() => undefined)
     },
   })
 
@@ -148,8 +195,29 @@ export function useTradeHistory(curve?: Address, launchId?: number) {
     abi: bondingCurveAbi,
     eventName: 'Sell',
     enabled: Boolean(curve),
-    onLogs() {
-      query.refetch()
+    onLogs(logs) {
+      if (!publicClient) return
+      void Promise.all(logs.map(async (log) => {
+        if (
+          log.blockNumber == null || !log.transactionHash || log.args.seller == null ||
+          log.args.nativeOut == null || log.args.tokensIn == null
+        ) return null
+        const block = await publicClient.getBlock({ blockNumber: log.blockNumber })
+        const price = priceFromSell(log.args.nativeOut, log.args.tokensIn)
+        return {
+          time: Number(block.timestamp),
+          price,
+          mcap: price * TOTAL_SUPPLY,
+          amountNative: Number(formatEther(log.args.nativeOut)),
+          amountToken: Number(formatEther(log.args.tokensIn)),
+          side: 'sell' as const,
+          trader: log.args.seller,
+          txHash: log.transactionHash,
+          blockNumber: Number(log.blockNumber),
+          logIndex: log.logIndex == null ? undefined : Number(log.logIndex),
+        }
+      })).then((rows) => addLiveTrades(rows.filter((row): row is TradePoint => row != null)))
+        .catch(() => undefined)
     },
   })
 

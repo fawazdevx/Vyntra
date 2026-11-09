@@ -243,6 +243,7 @@ export function createApp(opts: { basePath?: string } = {}) {
         txHash: r.tx_hash,
         fee: Number(r.fee),
         blockNumber: Number(r.block_number),
+        logIndex: Number(r.log_index),
       })
       last = time
     }
@@ -276,6 +277,7 @@ export function createApp(opts: { basePath?: string } = {}) {
         trader: row.trader,
         txHash: row.tx_hash,
         blockNumber: Number(row.block_number),
+        logIndex: Number(row.log_index),
       })
       last = time
     }

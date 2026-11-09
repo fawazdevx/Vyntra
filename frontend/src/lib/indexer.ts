@@ -1,6 +1,6 @@
 import type { Address } from 'viem'
 import type { LaunchView } from './config'
-import type { TradePoint } from '../hooks/useTradeHistory'
+import type { TradePoint } from './tradeHistory'
 
 const BASE = (import.meta.env.VITE_INDEXER_URL as string | undefined)?.replace(/\/$/, '') || ''
 
@@ -91,6 +91,8 @@ export async function fetchTradesFromIndexer(launchId: number): Promise<TradePoi
       side: 'buy' | 'sell'
       trader: string
       txHash: string
+      blockNumber?: number
+      logIndex?: number
     }>
   }>(`/v1/launches/${launchId}/trades?limit=5000`)
   if (!data?.trades) return null
@@ -103,6 +105,8 @@ export async function fetchTradesFromIndexer(launchId: number): Promise<TradePoi
     side: t.side,
     trader: t.trader as Address,
     txHash: t.txHash as `0x${string}`,
+    blockNumber: t.blockNumber,
+    logIndex: t.logIndex,
   }))
 }
 
@@ -120,6 +124,8 @@ export async function fetchPlatformTradesFromIndexer(
       side: 'buy' | 'sell'
       trader: string
       txHash: string
+      blockNumber?: number
+      logIndex?: number
     }>
   }>('/v1/platform-trades?limit=5000')
   if (!data?.trades) return null
@@ -136,6 +142,8 @@ export async function fetchPlatformTradesFromIndexer(
     side: trade.side,
     trader: trade.trader as Address,
     txHash: trade.txHash as `0x${string}`,
+    blockNumber: trade.blockNumber,
+    logIndex: trade.logIndex,
   }))
 }
 

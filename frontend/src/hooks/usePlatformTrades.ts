@@ -1,30 +1,33 @@
-import { useQuery } from '@tanstack/react-query'
+import { useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { usePublicClient, useWatchContractEvent } from 'wagmi'
 import { formatEther, type Address } from 'viem'
 import { vyntraMarketAbi } from '../lib/abis'
 import { fetchPlatformTradesFromIndexer, isIndexerConfigured } from '../lib/indexer'
-import type { TradePoint } from './useTradeHistory'
+import { mergeTradePoints, type TradePoint } from '../lib/tradeHistory'
 
 const TOTAL_SUPPLY = 1_000_000_000
 
 async function fetchPlatformTrades(
   publicClient: NonNullable<ReturnType<typeof usePublicClient>>,
   market: Address,
+  fromBlock = 0n,
+  toBlock: bigint | 'latest' = 'latest',
 ): Promise<TradePoint[]> {
   const [buys, sells] = await Promise.all([
     publicClient.getContractEvents({
       address: market,
       abi: vyntraMarketAbi,
       eventName: 'BuyVyntra',
-      fromBlock: 0n,
-      toBlock: 'latest',
+      fromBlock,
+      toBlock,
     }),
     publicClient.getContractEvents({
       address: market,
       abi: vyntraMarketAbi,
       eventName: 'SellVyntra',
-      fromBlock: 0n,
-      toBlock: 'latest',
+      fromBlock,
+      toBlock,
     }),
   ])
 
@@ -62,6 +65,8 @@ async function fetchPlatformTrades(
       side: 'buy',
       trader: (e.args.buyer || '0x0000000000000000000000000000000000000000') as Address,
       txHash: e.transactionHash,
+      blockNumber: e.blockNumber == null ? undefined : Number(e.blockNumber),
+      logIndex: e.logIndex == null ? undefined : Number(e.logIndex),
     })
   }
 
@@ -81,6 +86,8 @@ async function fetchPlatformTrades(
       side: 'sell',
       trader: (e.args.seller || '0x0000000000000000000000000000000000000000') as Address,
       txHash: e.transactionHash,
+      blockNumber: e.blockNumber == null ? undefined : Number(e.blockNumber),
+      logIndex: e.logIndex == null ? undefined : Number(e.logIndex),
     })
   }
 
@@ -97,29 +104,78 @@ async function fetchPlatformTrades(
 /** Trade history for the buyer-funded HYPE/VYNTRA market (chart + tape). */
 export function usePlatformTrades(market?: Address) {
   const publicClient = usePublicClient()
+  const queryClient = useQueryClient()
+  const liveTradesRef = useRef<{ scope: string; trades: TradePoint[] }>({ scope: '', trades: [] })
   const enabled = Boolean(market && publicClient)
+  const tradeScope = `${publicClient?.chain?.id ?? ''}:${market?.toLowerCase() ?? ''}`
+  const getLiveTrades = () => liveTradesRef.current.scope === tradeScope ? liveTradesRef.current.trades : []
+  const queryKey = ['platform-trades', market] as const
 
   const query = useQuery({
-    queryKey: ['platform-trades', market],
+    queryKey,
     enabled,
     staleTime: 12_000,
-    refetchInterval: 20_000,
+    refetchInterval: 10_000,
     queryFn: async () => {
       if (isIndexerConfigured) {
         const indexedTrades = await fetchPlatformTradesFromIndexer(market)
-        if (indexedTrades !== null) return indexedTrades
+        if (indexedTrades !== null) {
+          try {
+            const latest = await publicClient!.getBlockNumber()
+            const recentFromBlock = latest > 128n ? latest - 128n : 0n
+            const recent = await fetchPlatformTrades(publicClient!, market!, recentFromBlock, latest)
+            return mergeTradePoints(indexedTrades, [...recent, ...getLiveTrades()])
+          } catch {
+            return mergeTradePoints(indexedTrades, getLiveTrades())
+          }
+        }
       }
-      return fetchPlatformTrades(publicClient!, market!)
+      const onChain = await fetchPlatformTrades(publicClient!, market!)
+      return mergeTradePoints(onChain, getLiveTrades())
     },
   })
+
+  async function addLiveTrades(trades: TradePoint[]) {
+    if (trades.length === 0) return
+    const nextLiveTrades = mergeTradePoints([], [...getLiveTrades(), ...trades]).slice(-500)
+    liveTradesRef.current = { scope: tradeScope, trades: nextLiveTrades }
+    queryClient.setQueryData<TradePoint[]>(queryKey, (current) =>
+      mergeTradePoints(current ?? [], nextLiveTrades),
+    )
+    await query.refetch()
+  }
 
   useWatchContractEvent({
     address: market,
     abi: vyntraMarketAbi,
     eventName: 'BuyVyntra',
     enabled,
-    onLogs: () => {
-      void query.refetch()
+    onLogs: (logs) => {
+      if (!publicClient) return
+      void Promise.all(logs.map(async (log) => {
+        if (
+          log.blockNumber == null || !log.transactionHash || log.args.buyer == null ||
+          log.args.nativeIn == null || log.args.vyntraOut == null
+        ) return null
+        const block = await publicClient.getBlock({ blockNumber: log.blockNumber })
+        const native = Number(formatEther(log.args.nativeIn))
+        const tokens = Number(formatEther(log.args.vyntraOut))
+        if (tokens <= 0) return null
+        const price = native / tokens
+        return {
+          time: Number(block.timestamp),
+          price,
+          mcap: price * TOTAL_SUPPLY,
+          amountNative: native,
+          amountToken: tokens,
+          side: 'buy' as const,
+          trader: log.args.buyer,
+          txHash: log.transactionHash,
+          blockNumber: Number(log.blockNumber),
+          logIndex: log.logIndex == null ? undefined : Number(log.logIndex),
+        }
+      })).then((rows) => addLiveTrades(rows.filter((row): row is TradePoint => row != null)))
+        .catch(() => undefined)
     },
   })
 
@@ -128,8 +184,32 @@ export function usePlatformTrades(market?: Address) {
     abi: vyntraMarketAbi,
     eventName: 'SellVyntra',
     enabled,
-    onLogs: () => {
-      void query.refetch()
+    onLogs: (logs) => {
+      if (!publicClient) return
+      void Promise.all(logs.map(async (log) => {
+        if (
+          log.blockNumber == null || !log.transactionHash || log.args.seller == null ||
+          log.args.vyntraIn == null || log.args.nativeOut == null
+        ) return null
+        const block = await publicClient.getBlock({ blockNumber: log.blockNumber })
+        const native = Number(formatEther(log.args.nativeOut))
+        const tokens = Number(formatEther(log.args.vyntraIn))
+        if (tokens <= 0) return null
+        const price = native / tokens
+        return {
+          time: Number(block.timestamp),
+          price,
+          mcap: price * TOTAL_SUPPLY,
+          amountNative: native,
+          amountToken: tokens,
+          side: 'sell' as const,
+          trader: log.args.seller,
+          txHash: log.transactionHash,
+          blockNumber: Number(log.blockNumber),
+          logIndex: log.logIndex == null ? undefined : Number(log.logIndex),
+        }
+      })).then((rows) => addLiveTrades(rows.filter((row): row is TradePoint => row != null)))
+        .catch(() => undefined)
     },
   })
 

@@ -80,7 +80,7 @@ const docPages: DocPage[] = [
       },
       {
         title: 'Charts and indexed data',
-        body: <p>Charts, trade history, holders, wallet activity, and volume use the Vyntra indexer. Choose a timeframe from one minute through one day, or select <strong>All</strong> to fit the available indexed history (up to 5,000 trades). Switch between market cap and token price, and use Auto, Candles, or Line to choose how the chart is drawn. The indexer may lag the chain; use a transaction link and the Elysium explorer to verify a recent trade if it has not appeared in the app yet.</p>,
+        body: <p>Charts and trade tapes combine recent on-chain buys and sells with the Vyntra indexer&apos;s full history. New events can appear before the indexer has caught up; older trades, holders, wallet activity, and volume still depend on indexed records. Choose a timeframe from one minute through one day, or select <strong>All</strong> to fit the available indexed history (up to 5,000 trades). Switch between market cap and token price, and use Auto, Candles, or Line to choose how the chart is drawn. Use a transaction link and the Elysium explorer to verify a trade if it has not appeared in the app yet.</p>,
       },
     ],
   },
@@ -122,7 +122,7 @@ const docPages: DocPage[] = [
     sections: [
       {
         title: 'Follow the market',
-        body: <p>Your token page shows the live pool state and the indexed trade record. If a transaction is confirmed on-chain but missing from the page, the indexer may still be catching up.</p>,
+        body: <p>Your token page shows the live pool state, recent on-chain buys and sells, and the indexed trade record. The indexer fills in complete history in the background; verify a transaction on the Elysium explorer if the tape has not received its event yet.</p>,
       },
       {
         title: 'Claim creator fees',
