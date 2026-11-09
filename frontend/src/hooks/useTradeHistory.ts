@@ -166,7 +166,7 @@ export function useTradeHistory(curve?: Address, launchId?: number) {
     enabled: Boolean(curve),
     onLogs(logs) {
       if (!publicClient) return
-      void Promise.all(logs.map(async (log) => {
+      void Promise.all(logs.map(async (log): Promise<TradePoint | null> => {
         if (
           log.blockNumber == null || !log.transactionHash || log.args.buyer == null ||
           log.args.nativeIn == null || log.args.tokensOut == null
@@ -200,7 +200,7 @@ export function useTradeHistory(curve?: Address, launchId?: number) {
     enabled: Boolean(curve),
     onLogs(logs) {
       if (!publicClient) return
-      void Promise.all(logs.map(async (log) => {
+      void Promise.all(logs.map(async (log): Promise<TradePoint | null> => {
         if (
           log.blockNumber == null || !log.transactionHash || log.args.seller == null ||
           log.args.nativeOut == null || log.args.tokensIn == null

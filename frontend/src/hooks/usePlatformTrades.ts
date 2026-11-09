@@ -152,7 +152,7 @@ export function usePlatformTrades(market?: Address) {
     enabled,
     onLogs: (logs) => {
       if (!publicClient) return
-      void Promise.all(logs.map(async (log) => {
+      void Promise.all(logs.map(async (log): Promise<TradePoint | null> => {
         if (
           log.blockNumber == null || !log.transactionHash || log.args.buyer == null ||
           log.args.nativeIn == null || log.args.vyntraOut == null
@@ -189,7 +189,7 @@ export function usePlatformTrades(market?: Address) {
     enabled,
     onLogs: (logs) => {
       if (!publicClient) return
-      void Promise.all(logs.map(async (log) => {
+      void Promise.all(logs.map(async (log): Promise<TradePoint | null> => {
         if (
           log.blockNumber == null || !log.transactionHash || log.args.seller == null ||
           log.args.vyntraIn == null || log.args.nativeOut == null
