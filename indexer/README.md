@@ -45,7 +45,8 @@ Set these variables in the indexer project:
 | `TURSO_AUTH_TOKEN` | yes | Token for that database |
 | `BOARD_ADDRESS` | optional | Elysium VyntraBoard |
 | `INDEXER_LOG_CHUNK` | optional | Default `2000` blocks |
-| `INDEXER_MARKET_CATCHUP_CHUNKS` | optional | Default `1` on Vercel |
+| `INDEXER_CATCHUP_CHUNKS` | optional | Number of bounded 2,000-block factory chunks per sync; default `3` on Vercel |
+| `INDEXER_MARKET_CATCHUP_CHUNKS` | optional | Number of bounded VYNTRA market chunks per sync; default `3` on Vercel |
 | `VYNTRA_RESERVE_CATCHUP_CHUNKS` | optional | Default `1` on Vercel |
 | `CRON_SECRET` | recommended | Random bearer secret for `/api/cron/sync` |
 
@@ -53,8 +54,9 @@ After deployment, check `/api/health`, `/api/v1/stats`, `/api/v1/launches`, and 
 Health should report chain ID `99801`. Set the frontend `VITE_INDEXER_URL` to the project URL plus
 `/api`, then redeploy the frontend.
 
-Vercel syncs on API requests when the index is stale and uses the configured Cron schedule as a
-backup. The configured start blocks are also lower bounds for existing Turso cursors, so a database
+Vercel syncs up to three bounded chunks when an API request finds the index stale and uses the
+configured Cron schedule as a backup. The factory cursor is saved after each chunk, so a timeout
+resumes from the last completed range. The configured start blocks are also lower bounds for existing Turso cursors, so a database
 that contains an earlier deployment cursor will advance to the current deployment start. Use a
 separate Turso database for each chain deployment so launch and volume data cannot mix.
 

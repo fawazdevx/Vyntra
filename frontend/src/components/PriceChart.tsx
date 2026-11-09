@@ -98,12 +98,12 @@ const TOTAL_SUPPLY = 1_000_000_000
  * Visible bar count is derived from chart width / BAR_SPACING so
  * setVisibleLogicalRange never stretches a handful of candles across the pane.
  */
-const BAR_SPACING = 5
+const BAR_SPACING = 8
 const MIN_BAR_SPACING = 2
 const MAX_BAR_SPACING = 12
 const RIGHT_OFFSET = 10
 /** Floor so sparse tokens still sit as skinny bars on the right. */
-const MIN_BARS_IN_VIEW = 100
+const MIN_BARS_IN_VIEW = 48
 /** Prefer area until enough real (non-whitespace) candles exist. */
 const AREA_UNTIL_CANDLES = 6
 /** Cap quiet-period whitespace so series stay bounded. */
@@ -173,18 +173,25 @@ function sanitizeCandle(c: CandleBucket): CandleBucket | null {
 
 function aggregateCandles(trades: TradePoint[], intervalSec: number): CandleBucket[] {
   const map = new Map<number, CandleBucket>()
+  const ordered = trades
+    .filter((trade) => finitePositive(trade.mcap) && Number.isFinite(trade.time) && trade.time > 0)
+    .slice()
+    .sort((a, b) => a.time - b.time)
+  let previousPrice: number | undefined
 
-  for (const t of trades) {
-    if (!finitePositive(t.mcap) || !Number.isFinite(t.time) || t.time <= 0) continue
+  for (const t of ordered) {
     const time = floorBucket(Math.floor(t.time), intervalSec)
     const vol = Number.isFinite(t.amountNative) && t.amountNative > 0 ? t.amountNative : 0
     const existing = map.get(time)
     if (!existing) {
+      // A curve's price stays unchanged between trades. Carry the last trade
+      // into the next active bucket so sparse markets still have truthful OHLC.
+      const open = previousPrice ?? t.mcap
       map.set(time, {
         time,
-        open: t.mcap,
-        high: t.mcap,
-        low: t.mcap,
+        open,
+        high: Math.max(open, t.mcap),
+        low: Math.min(open, t.mcap),
         close: t.mcap,
         volume: vol,
         trades: 1,
@@ -196,6 +203,7 @@ function aggregateCandles(trades: TradePoint[], intervalSec: number): CandleBuck
       existing.volume += vol
       existing.trades += 1
     }
+    previousPrice = t.mcap
   }
 
   return Array.from(map.values())
@@ -385,7 +393,7 @@ export function PriceChart({
     }
   }, [trades, spotMcap])
 
-  const { points, realCandleCount } = useMemo(() => {
+  const { points, linePoints, realCandleCount } = useMemo(() => {
     let bucketSeconds = interval.seconds
     if (intervalId === 'all' && trades.length > 0) {
       let first = Number.POSITIVE_INFINITY
@@ -402,13 +410,16 @@ export function PriceChart({
     }
     const raw = aggregateCandles(trades, bucketSeconds)
     const gapped = fillGapsWithWhitespace(raw, bucketSeconds)
-    const spotted = withSpot(gapped, spotMcap, bucketSeconds)
-    const real = spotted.filter((p) => !isWhitespace(p)).length
+    const lineWithSpot = withSpot(gapped, spotMcap, bucketSeconds)
+    const real = gapped.filter((p) => !isWhitespace(p)).length
     // Short ranges keep sparse candles on the right; All fits the actual history.
     const visiblePoints = intervalId === 'all'
-      ? spotted
-      : padLeftWhitespace(spotted, bucketSeconds, MIN_BARS_IN_VIEW)
-    return { points: visiblePoints, realCandleCount: real }
+      ? gapped
+      : padLeftWhitespace(gapped, bucketSeconds, MIN_BARS_IN_VIEW)
+    const visibleLinePoints = intervalId === 'all'
+      ? lineWithSpot
+      : padLeftWhitespace(lineWithSpot, bucketSeconds, MIN_BARS_IN_VIEW)
+    return { points: visiblePoints, linePoints: visibleLinePoints, realCandleCount: real }
   }, [trades, spotMcap, interval.seconds, intervalId])
 
   const empty = realCandleCount === 0
@@ -480,7 +491,9 @@ export function PriceChart({
     const candles = chart.addSeries(CandlestickSeries, {
       upColor: colors.up,
       downColor: colors.down,
-      borderVisible: false,
+      borderVisible: true,
+      borderUpColor: colors.up,
+      borderDownColor: colors.down,
       wickUpColor: colors.up,
       wickDownColor: colors.down,
       priceLineVisible: true,
@@ -601,7 +614,18 @@ export function PriceChart({
         }
       })
 
-      const areaData: (AreaData | WhitespaceData)[] = chartPoints.map((p) => {
+      const lineChartPoints = linePoints.map((p) =>
+        isWhitespace(p)
+          ? p
+          : {
+              ...p,
+              open: displayValue(p.open),
+              high: displayValue(p.high),
+              low: displayValue(p.low),
+              close: displayValue(p.close),
+            },
+      )
+      const areaData: (AreaData | WhitespaceData)[] = lineChartPoints.map((p) => {
         if (isWhitespace(p)) return { time: p.time as UTCTimestamp }
         return {
           time: p.time as UTCTimestamp,
@@ -619,19 +643,19 @@ export function PriceChart({
       })
 
       candleRef.current.setData(candleData)
-      areaRef.current.setData(areaData)
+      areaRef.current.setData(useArea ? areaData : [])
       volumeRef.current.setData(volumeData)
-      barCountRef.current = candleData.length
+      barCountRef.current = useArea ? areaData.length : candleData.length
 
       candleRef.current.applyOptions({ visible: !useArea })
       areaRef.current.applyOptions({ visible: useArea })
 
       const w = containerRef.current?.clientWidth ?? 800
-      applyVisibleRange(chartRef.current, candleData.length, w, intervalId === 'all')
+      applyVisibleRange(chartRef.current, barCountRef.current, w, intervalId === 'all')
     } catch (err) {
       console.error('[PriceChart] failed to set series data', err)
     }
-  }, [points, interval.seconds, intervalId, ready, useArea, metric])
+  }, [points, linePoints, interval.seconds, intervalId, ready, useArea, metric])
 
   const statusLabel = error ? 'Trade data issue' : loading ? 'Updating trades' : 'On-chain trades'
   const emptyOverlay = loading && noTradeHistory

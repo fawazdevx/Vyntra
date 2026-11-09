@@ -4,6 +4,7 @@ import {
   BOARD_ADDRESS,
   CHAIN_ID,
   CONFIRMATIONS,
+  INDEXER_CATCHUP_CHUNKS,
   LOG_CHUNK,
   RPC_URL,
   START_BLOCK,
@@ -424,40 +425,7 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
     return { from, to: chainSafeTo, launches: 0, trades: newTrades }
   }
 
-  // Keep each RPC log query within the configured provider range limit. Persist
-  // the checkpoint after this batch so a large initial backfill can resume.
-  const chunkSize = BigInt(Math.max(1, Math.floor(LOG_CHUNK || 2_000)))
-  const safeTo = chainSafeTo < from + chunkSize - 1n ? chainSafeTo : from + chunkSize - 1n
-
-  // 1) Factory TokenSpawned
-  const spawnLogs = await client.getContractEvents({
-    address: factory,
-    abi: factoryAbi,
-    eventName: 'TokenSpawned',
-    fromBlock: from,
-    toBlock: safeTo,
-  })
-
-  for (const log of spawnLogs) {
-    const id = Number(log.args.id)
-    const ts = log.blockNumber != null ? await blockTs(log.blockNumber, tsCache) : Math.floor(Date.now() / 1000)
-    await upsertLaunchFromSpawn({
-      id,
-      token: log.args.token!,
-      curve: log.args.curve!,
-      creator: log.args.creator!,
-      splitter: log.args.splitter!,
-      name: log.args.name!,
-      symbol: log.args.symbol!,
-      imageURI: log.args.imageURI || '',
-      createdAt: ts,
-      createdBlock: Number(log.blockNumber ?? 0n),
-    })
-    await refreshLaunchState(id, log.args.token!, log.args.curve!)
-    newLaunches++
-  }
-
-  // Also bootstrap any launches missing from DB (e.g. indexer started mid-life)
+  // Bootstrap any launches missing from DB (e.g. indexer started mid-life).
   const onchainCount = Number(
     await client.readContract({ address: factory, abi: factoryAbi, functionName: 'launchCount' }),
   )
@@ -490,134 +458,173 @@ export async function syncOnce(): Promise<{ from: bigint; to: bigint; launches: 
     }
   }
 
-  // 2) Trades + graduate/migrate per known curve
-  const launches = await queryAll<Pick<LaunchRow, 'id' | 'token' | 'curve'>>(
-    'SELECT id, token, curve FROM launches',
-  )
+  // Keep each RPC log query within the configured provider range limit. Several
+  // bounded chunks per Vercel invocation let a delayed indexer catch up sooner.
+  const chunkSize = BigInt(Math.max(1, Math.floor(LOG_CHUNK || 2_000)))
+  const maxChunks = Math.max(1, Math.floor(INDEXER_CATCHUP_CHUNKS || 1))
+  let cursor = from
+  let chunks = 0
+  while (cursor <= chainSafeTo && chunks < maxChunks) {
+    const safeTo = chainSafeTo < cursor + chunkSize - 1n ? chainSafeTo : cursor + chunkSize - 1n
 
-  for (const L of launches) {
-    const curve = L.curve as Address
-    const [buys, sells, grads, migs] = await Promise.all([
-      client.getContractEvents({
-        address: curve,
-        abi: curveAbi,
-        eventName: 'Buy',
-        fromBlock: from,
-        toBlock: safeTo,
-      }),
-      client.getContractEvents({
-        address: curve,
-        abi: curveAbi,
-        eventName: 'Sell',
-        fromBlock: from,
-        toBlock: safeTo,
-      }),
-      client.getContractEvents({
-        address: curve,
-        abi: curveAbi,
-        eventName: 'Graduated',
-        fromBlock: from,
-        toBlock: safeTo,
-      }),
-      client.getContractEvents({
-        address: curve,
-        abi: curveAbi,
-        eventName: 'MigratedToUniswap',
-        fromBlock: from,
-        toBlock: safeTo,
-      }),
-    ])
-
-    for (const e of buys) {
-      if (!e.blockNumber || !e.transactionHash || e.args.nativeIn == null || e.args.tokensOut == null) continue
-      const ts = await blockTs(e.blockNumber, tsCache)
-      const fee = Number(formatEther(e.args.fee ?? 0n))
-      const native = Number(formatEther(e.args.nativeIn))
-      const tok = Number(formatEther(e.args.tokensOut))
-      const net = Math.max(native - fee, 0)
-      const price = tok > 0 ? net / tok : 0
-      await insertTrade({
-        launchId: L.id,
-        curve,
-        side: 'buy',
-        trader: e.args.buyer!,
-        nativeAmount: native,
-        tokenAmount: tok,
-        fee,
-        price,
-        mcap: price * TOTAL_SUPPLY,
-        blockNumber: Number(e.blockNumber),
-        txHash: e.transactionHash,
-        logIndex: e.logIndex ?? 0,
-        timestamp: ts,
-      })
-      newTrades++
-    }
-
-    for (const e of sells) {
-      if (!e.blockNumber || !e.transactionHash || e.args.nativeOut == null || e.args.tokensIn == null) continue
-      const ts = await blockTs(e.blockNumber, tsCache)
-      const fee = Number(formatEther(e.args.fee ?? 0n))
-      const native = Number(formatEther(e.args.nativeOut))
-      const tok = Number(formatEther(e.args.tokensIn))
-      const price = tok > 0 ? native / tok : 0
-      await insertTrade({
-        launchId: L.id,
-        curve,
-        side: 'sell',
-        trader: e.args.seller!,
-        nativeAmount: native,
-        tokenAmount: tok,
-        fee,
-        price,
-        mcap: price * TOTAL_SUPPLY,
-        blockNumber: Number(e.blockNumber),
-        txHash: e.transactionHash,
-        logIndex: e.logIndex ?? 0,
-        timestamp: ts,
-      })
-      newTrades++
-    }
-
-    if (grads.length || migs.length) {
-      await refreshLaunchState(L.id, L.token as Address, curve)
-    } else if (buys.length || sells.length) {
-      // cheap refresh of reserves/progress after activity
-      await refreshLaunchState(L.id, L.token as Address, curve)
-    }
-  }
-
-  // 3) Board replies
-  if (BOARD_ADDRESS) {
-    const replies = await client.getContractEvents({
-      address: BOARD_ADDRESS,
-      abi: boardAbi,
-      eventName: 'ReplyPosted',
-      fromBlock: from,
+    // 1) Factory TokenSpawned
+    const spawnLogs = await client.getContractEvents({
+      address: factory,
+      abi: factoryAbi,
+      eventName: 'TokenSpawned',
+      fromBlock: cursor,
       toBlock: safeTo,
     })
-    for (const e of replies) {
-      if (e.args.launchId == null || e.args.replyIndex == null) continue
-      const ts = e.blockNumber != null ? await blockTs(e.blockNumber, tsCache) : Math.floor(Date.now() / 1000)
-      await execute(
-        `INSERT OR REPLACE INTO replies (launch_id, reply_index, author, body, timestamp, tx_hash)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          Number(e.args.launchId),
-          Number(e.args.replyIndex),
-          e.args.author!,
-          e.args.body || '',
-          ts,
-          e.transactionHash || '',
-        ],
-      )
+
+    for (const log of spawnLogs) {
+      const id = Number(log.args.id)
+      const ts = log.blockNumber != null ? await blockTs(log.blockNumber, tsCache) : Math.floor(Date.now() / 1000)
+      await upsertLaunchFromSpawn({
+        id,
+        token: log.args.token!,
+        curve: log.args.curve!,
+        creator: log.args.creator!,
+        splitter: log.args.splitter!,
+        name: log.args.name!,
+        symbol: log.args.symbol!,
+        imageURI: log.args.imageURI || '',
+        createdAt: ts,
+        createdBlock: Number(log.blockNumber ?? 0n),
+      })
+      await refreshLaunchState(id, log.args.token!, log.args.curve!)
+      newLaunches++
     }
+
+    // 2) Trades + graduate/migrate per known curve
+    const launches = await queryAll<Pick<LaunchRow, 'id' | 'token' | 'curve'>>(
+      'SELECT id, token, curve FROM launches',
+    )
+
+    for (const L of launches) {
+      const curve = L.curve as Address
+      const [buys, sells, grads, migs] = await Promise.all([
+        client.getContractEvents({
+          address: curve,
+          abi: curveAbi,
+          eventName: 'Buy',
+          fromBlock: cursor,
+          toBlock: safeTo,
+        }),
+        client.getContractEvents({
+          address: curve,
+          abi: curveAbi,
+          eventName: 'Sell',
+          fromBlock: cursor,
+          toBlock: safeTo,
+        }),
+        client.getContractEvents({
+          address: curve,
+          abi: curveAbi,
+          eventName: 'Graduated',
+          fromBlock: cursor,
+          toBlock: safeTo,
+        }),
+        client.getContractEvents({
+          address: curve,
+          abi: curveAbi,
+          eventName: 'MigratedToUniswap',
+          fromBlock: cursor,
+          toBlock: safeTo,
+        }),
+      ])
+
+      for (const e of buys) {
+        if (!e.blockNumber || !e.transactionHash || e.args.nativeIn == null || e.args.tokensOut == null) continue
+        const ts = await blockTs(e.blockNumber, tsCache)
+        const fee = Number(formatEther(e.args.fee ?? 0n))
+        const native = Number(formatEther(e.args.nativeIn))
+        const tok = Number(formatEther(e.args.tokensOut))
+        const net = Math.max(native - fee, 0)
+        const price = tok > 0 ? net / tok : 0
+        await insertTrade({
+          launchId: L.id,
+          curve,
+          side: 'buy',
+          trader: e.args.buyer!,
+          nativeAmount: native,
+          tokenAmount: tok,
+          fee,
+          price,
+          mcap: price * TOTAL_SUPPLY,
+          blockNumber: Number(e.blockNumber),
+          txHash: e.transactionHash,
+          logIndex: e.logIndex ?? 0,
+          timestamp: ts,
+        })
+        newTrades++
+      }
+
+      for (const e of sells) {
+        if (!e.blockNumber || !e.transactionHash || e.args.nativeOut == null || e.args.tokensIn == null) continue
+        const ts = await blockTs(e.blockNumber, tsCache)
+        const fee = Number(formatEther(e.args.fee ?? 0n))
+        const native = Number(formatEther(e.args.nativeOut))
+        const tok = Number(formatEther(e.args.tokensIn))
+        const price = tok > 0 ? native / tok : 0
+        await insertTrade({
+          launchId: L.id,
+          curve,
+          side: 'sell',
+          trader: e.args.seller!,
+          nativeAmount: native,
+          tokenAmount: tok,
+          fee,
+          price,
+          mcap: price * TOTAL_SUPPLY,
+          blockNumber: Number(e.blockNumber),
+          txHash: e.transactionHash,
+          logIndex: e.logIndex ?? 0,
+          timestamp: ts,
+        })
+        newTrades++
+      }
+
+      if (grads.length || migs.length || buys.length || sells.length) {
+        await refreshLaunchState(L.id, L.token as Address, curve)
+      }
+    }
+
+    // 3) Board replies
+    if (BOARD_ADDRESS) {
+      const replies = await client.getContractEvents({
+        address: BOARD_ADDRESS,
+        abi: boardAbi,
+        eventName: 'ReplyPosted',
+        fromBlock: cursor,
+        toBlock: safeTo,
+      })
+      for (const e of replies) {
+        if (e.args.launchId == null || e.args.replyIndex == null) continue
+        const ts = e.blockNumber != null ? await blockTs(e.blockNumber, tsCache) : Math.floor(Date.now() / 1000)
+        await execute(
+          `INSERT OR REPLACE INTO replies (launch_id, reply_index, author, body, timestamp, tx_hash)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            Number(e.args.launchId),
+            Number(e.args.replyIndex),
+            e.args.author!,
+            e.args.body || '',
+            ts,
+            e.transactionHash || '',
+          ],
+        )
+      }
+    }
+
+    // Persist each completed chunk so a later timeout resumes without re-scanning it.
+    await setMeta('last_block', safeTo.toString())
+    cursor = safeTo + 1n
+    chunks++
   }
 
-  await setMeta('last_block', safeTo.toString())
   await setMeta('last_sync_at', String(Math.floor(Date.now() / 1000)))
 
-  return { from, to: safeTo, launches: newLaunches, trades: newTrades }
+  return { from, to: cursor - 1n, launches: newLaunches, trades: newTrades }
 }
 
 export async function runLoop(pollMs: number) {
