@@ -68,7 +68,7 @@ const docPages: DocPage[] = [
     sections: [
       {
         title: 'Review the launch',
-        body: <p>Market cards show curve progress toward a locked V4 pool, HYPE raised, indexed trading volume, trade count, creator, and launch date. Use <strong>Top volume</strong> to sort launches by recorded volume. Open a token page for its chart, recent trades, token and creator addresses, and detailed pool status. Verify that the token is registered by the Vyntra factory; the recognizable <code>7f7</code> address ending alone is not proof.</p>,
+        body: <p>The Markets summary includes total indexed trades across creator launches and the VYNTRA market. Market cards show curve progress toward a locked V4 pool, HYPE raised, per-launch trading volume and trade count, creator, and launch date. Use <strong>Top volume</strong> to sort launches by recorded volume. Open a token page for its chart, recent trades, token and creator addresses, and detailed pool status. Verify that the token is registered by the Vyntra factory; the recognizable <code>7f7</code> address ending alone is not proof.</p>,
       },
       {
         title: 'Buy and sell',

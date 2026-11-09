@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { useReadContracts } from 'wagmi'
 import { Rocket, Flame, Clock, Trophy, RefreshCw, Star, BarChart3 } from 'lucide-react'
 import { TokenCard } from '../components/TokenCard'
@@ -15,6 +16,7 @@ import {
 import { formatUserError } from '../lib/errors'
 import { HypeUsd } from '../components/HypeUsd'
 import { vyntraPromotionAbi } from '../lib/abis'
+import { fetchStatsFromIndexer, isIndexerConfigured } from '../lib/indexer'
 
 type Tab = 'live' | 'new' | 'volume' | 'graduating' | 'graduated' | 'watchlist'
 
@@ -22,6 +24,14 @@ export function Feed() {
   const [tab, setTab] = useState<Tab>('live')
   const { data: launches = [], isLoading, isError, error, refetch, isFetching } = useLaunches()
   const { ids: watchIds, count: watchCount } = useWatchlist()
+  const indexerStatsQuery = useQuery({
+    queryKey: ['vyntra', 'landing-stats'],
+    queryFn: fetchStatsFromIndexer,
+    enabled: isIndexerConfigured,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    retry: 1,
+  })
 
   const promotionAddresses = useMemo(
     () => [VYNTRA_PROMOTION, LEGACY_VYNTRA_PROMOTION]
@@ -133,11 +143,16 @@ export function Feed() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">
         <Stat label="Launches" value={String(stats.total)} />
         <Stat label="Live pools" value={String(stats.live)} />
         <Stat label="Graduated" value={String(stats.graduated)} />
         <Stat label="Watching" value={String(stats.watchCount)} />
+        <Stat
+          label="Recorded trades"
+          value={indexerStatsQuery.data ? indexerStatsQuery.data.trades.toLocaleString('en-US') : '—'}
+          sub={<span className="mt-1 block text-xs text-[var(--vyntra-faint)]">Creator + platform markets</span>}
+        />
         <Stat label="HYPE raised" value={stats.volume} mono sub={<HypeUsd value={stats.volumeNative} />} />
       </div>
 
