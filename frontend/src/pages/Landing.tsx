@@ -137,7 +137,7 @@ export function Landing() {
             <div className="landing-hero-copy">
               <div className="inline-flex items-center gap-2 rounded-full border border-[var(--vyntra-border)] bg-[var(--vyntra-card)] px-3 py-1.5">
                 <span className="chip-live !border-0 !bg-transparent !px-0 !py-0">
-                  Preparing for Elysium Testnet
+                  Live on Elysium Testnet
                 </span>
               </div>
               <h1 className="page-title mt-6 text-5xl sm:text-6xl lg:text-7xl">
@@ -314,9 +314,9 @@ export function Landing() {
             <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-[rgba(124,58,237,0.18)] blur-3xl" />
             <div className="relative flex flex-col items-start justify-between gap-8 lg:flex-row lg:items-center">
               <div className="max-w-xl">
-                <h2 className="page-title text-3xl sm:text-4xl">The testnet rollout is next</h2>
+                <h2 className="page-title text-3xl sm:text-4xl">The mainnet rollout is next</h2>
                 <p className="mt-3 text-base text-[var(--vyntra-muted)] sm:text-lg">
-                  Vyntra is preparing its Elysium deployment. Read the model and tokenomics while the testnet markets are getting ready.
+                  Vyntra is preparing its Elysium mainnet deployment. Read the model and tokenomics while the testnet markets are getting ready.
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
