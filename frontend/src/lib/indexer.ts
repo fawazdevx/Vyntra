@@ -59,6 +59,8 @@ function toLaunchView(l: IndexerLaunch): LaunchView {
     creatorFees: 0n,
     buyTaxBps: l.buyTaxBps,
     sellTaxBps: l.sellTaxBps,
+    tradeCount: l.tradeCount,
+    volumeNative: l.volumeNative,
   }
 }
 

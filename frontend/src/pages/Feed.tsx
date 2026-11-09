@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useReadContracts } from 'wagmi'
-import { Rocket, Flame, Clock, Trophy, RefreshCw, Star } from 'lucide-react'
+import { Rocket, Flame, Clock, Trophy, RefreshCw, Star, BarChart3 } from 'lucide-react'
 import { TokenCard } from '../components/TokenCard'
 import { PlatformTokenCard } from '../components/PlatformTokenCard'
 import { useLaunches } from '../hooks/useLaunches'
@@ -16,7 +16,7 @@ import { formatUserError } from '../lib/errors'
 import { HypeUsd } from '../components/HypeUsd'
 import { vyntraPromotionAbi } from '../lib/abis'
 
-type Tab = 'live' | 'new' | 'graduating' | 'graduated' | 'watchlist'
+type Tab = 'live' | 'new' | 'volume' | 'graduating' | 'graduated' | 'watchlist'
 
 export function Feed() {
   const [tab, setTab] = useState<Tab>('live')
@@ -67,6 +67,8 @@ export function Feed() {
       visible = list.filter((l) => set.has(l.id)).sort((a, b) => b.createdAt - a.createdAt)
     } else if (tab === 'new') {
       visible = list.sort((a, b) => b.createdAt - a.createdAt)
+    } else if (tab === 'volume') {
+      visible = list.sort((a, b) => (b.volumeNative ?? 0) - (a.volumeNative ?? 0))
     } else if (tab === 'graduating') {
       visible = list
         .filter((l) => !l.graduated && l.progressBps >= 5000)
@@ -78,6 +80,8 @@ export function Feed() {
     }
 
     return visible.sort((a, b) => {
+      // Keep Top volume a true volume ranking; paid placement remains labeled on the card.
+      if (tab === 'volume') return 0
       const aFeatured = (featuredUntilByToken.get(a.token.toLowerCase()) ?? 0) > Date.now() / 1000
       const bFeatured = (featuredUntilByToken.get(b.token.toLowerCase()) ?? 0) > Date.now() / 1000
       return Number(bFeatured) - Number(aFeatured)
@@ -94,6 +98,7 @@ export function Feed() {
   const tabs: { id: Tab; label: string; icon: typeof Flame }[] = [
     { id: 'live', label: 'Trending', icon: Flame },
     { id: 'new', label: 'New', icon: Clock },
+    { id: 'volume', label: 'Top volume', icon: BarChart3 },
     { id: 'graduating', label: 'Almost', icon: Rocket },
     { id: 'graduated', label: 'Graduated', icon: Trophy },
     { id: 'watchlist', label: 'Watchlist', icon: Star },
@@ -143,7 +148,7 @@ export function Feed() {
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              className={`inline-flex shrink-0 items-center gap-2 rounded-[var(--radius)] px-3.5 py-2.5 text-sm font-semibold transition ${
+              className={`inline-flex shrink-0 items-center gap-2 rounded-[var(--radius)] px-3.5 py-2.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vyntra-primary)] focus-visible:ring-offset-2 ${
                 tab === id
                   ? 'bg-[rgba(124,58,237,0.12)] text-[var(--vyntra-primary)]'
                   : 'text-[var(--vyntra-muted)] hover:text-[var(--vyntra-fg)]'
@@ -167,6 +172,10 @@ export function Feed() {
           Refresh
         </button>
       </div>
+
+      {tab === 'volume' ? (
+        <p className="-mt-5 text-xs text-[var(--vyntra-faint)]">Ranked by all-time HYPE volume from recorded buys and sells.</p>
+      ) : null}
 
       {isLoading ? (
         <div className="card px-6 py-20 text-center text-base text-[var(--vyntra-muted)]">

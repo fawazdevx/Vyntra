@@ -86,6 +86,8 @@ export type LaunchView = {
   creatorFees: bigint
   buyTaxBps: number
   sellTaxBps: number
+  tradeCount?: number
+  volumeNative?: number
 }
 
 export function shortAddr(addr?: string) {

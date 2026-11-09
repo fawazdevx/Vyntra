@@ -39,15 +39,15 @@ function chartTheme(mode: 'light' | 'dark') {
   }
   return {
     background: '#ffffff',
-    text: '#6b6860',
-    grid: 'rgba(26,25,23,0.06)',
-    crosshair: 'rgba(26,25,23,0.35)',
-    crosshairLabel: '#1a1917',
-    areaLine: '#1a1917',
-    areaTop: 'rgba(26,25,23,0.16)',
-    areaBottom: 'rgba(26,25,23,0.02)',
-    up: '#0f7a4e',
-    down: '#c23b3b',
+    text: '#777287',
+    grid: 'rgba(43,31,74,0.055)',
+    crosshair: 'rgba(103,72,224,0.42)',
+    crosshairLabel: '#6546d8',
+    areaLine: '#6546e8',
+    areaTop: 'rgba(101,70,232,0.18)',
+    areaBottom: 'rgba(101,70,232,0.015)',
+    up: '#118665',
+    down: '#d9576f',
   }
 }
 
@@ -65,6 +65,7 @@ export const CHART_INTERVALS: ChartInterval[] = [
   { id: '1H', label: '1H', seconds: 3600 },
   { id: '4H', label: '4H', seconds: 14_400 },
   { id: '1D', label: '1D', seconds: 86_400 },
+  { id: 'all', label: 'All', seconds: 60 },
 ]
 
 type Props = {
@@ -108,6 +109,7 @@ const AREA_UNTIL_CANDLES = 6
 /** Cap quiet-period whitespace so series stay bounded. */
 const MAX_GAP_FILL = 96
 const MAX_FORWARD_FILL = 48
+const ALL_HISTORY_MAX_BARS = 500
 
 function floorBucket(ts: number, intervalSec: number) {
   return Math.floor(ts / intervalSec) * intervalSec
@@ -314,13 +316,13 @@ function padPriceRange(info: AutoscaleInfo | null): AutoscaleInfo | null {
   }
 }
 
-function applyVisibleRange(chart: IChartApi, barCount: number, widthPx: number) {
+function applyVisibleRange(chart: IChartApi, barCount: number, widthPx: number, fitAll = false) {
   const ts = chart.timeScale()
   const width = widthPx > 0 ? widthPx : 800
   // Fit enough logical bars that each stays ~BAR_SPACING px wide
   const barsInView = Math.max(MIN_BARS_IN_VIEW, Math.floor(width / BAR_SPACING))
   const to = barCount - 1 + RIGHT_OFFSET
-  const from = to - barsInView
+  const from = fitAll ? 0 : to - barsInView
 
   ts.applyOptions({
     barSpacing: BAR_SPACING,
@@ -348,10 +350,12 @@ export function PriceChart({
   const areaRef = useRef<ISeriesApi<'Area'> | null>(null)
   const volumeRef = useRef<ISeriesApi<'Histogram'> | null>(null)
   const barCountRef = useRef(0)
+  const fitAllRef = useRef(false)
   const candleLookupRef = useRef(new Map<number, CandleBucket>())
 
   const [intervalId, setIntervalId] = useState(defaultInterval)
   const interval = CHART_INTERVALS.find((i) => i.id === intervalId) ?? CHART_INTERVALS[1]
+  fitAllRef.current = intervalId === 'all'
   const [metric, setMetric] = useState<ChartMetric>('mcap')
   const [chartStyle, setChartStyle] = useState<ChartStyle>('auto')
   const [hoveredTime, setHoveredTime] = useState<number | null>(null)
@@ -375,8 +379,6 @@ export function PriceChart({
         : undefined
 
     return {
-      currentMcap: currentMcap ?? 0,
-      currentPrice: (currentMcap ?? 0) / TOTAL_SUPPLY,
       changePct,
       volumeNative: recent.reduce((sum, trade) => sum + (trade.amountNative > 0 ? trade.amountNative : 0), 0),
       trades24h: recent.length,
@@ -384,14 +386,30 @@ export function PriceChart({
   }, [trades, spotMcap])
 
   const { points, realCandleCount } = useMemo(() => {
-    const raw = aggregateCandles(trades, interval.seconds)
-    const gapped = fillGapsWithWhitespace(raw, interval.seconds)
-    const spotted = withSpot(gapped, spotMcap, interval.seconds)
+    let bucketSeconds = interval.seconds
+    if (intervalId === 'all' && trades.length > 0) {
+      let first = Number.POSITIVE_INFINITY
+      let last = 0
+      for (const trade of trades) {
+        if (!Number.isFinite(trade.time) || trade.time <= 0) continue
+        first = Math.min(first, trade.time)
+        last = Math.max(last, trade.time)
+      }
+      if (Number.isFinite(first) && last >= first) {
+        const secondsPerBar = (last - first) / ALL_HISTORY_MAX_BARS
+        bucketSeconds = Math.max(60, Math.ceil(secondsPerBar / 60) * 60)
+      }
+    }
+    const raw = aggregateCandles(trades, bucketSeconds)
+    const gapped = fillGapsWithWhitespace(raw, bucketSeconds)
+    const spotted = withSpot(gapped, spotMcap, bucketSeconds)
     const real = spotted.filter((p) => !isWhitespace(p)).length
-    // Left pad so a few candles never dominate the pane width
-    const padded = padLeftWhitespace(spotted, interval.seconds, MIN_BARS_IN_VIEW)
-    return { points: padded, realCandleCount: real }
-  }, [trades, spotMcap, interval.seconds])
+    // Short ranges keep sparse candles on the right; All fits the actual history.
+    const visiblePoints = intervalId === 'all'
+      ? spotted
+      : padLeftWhitespace(spotted, bucketSeconds, MIN_BARS_IN_VIEW)
+    return { points: visiblePoints, realCandleCount: real }
+  }, [trades, spotMcap, interval.seconds, intervalId])
 
   const empty = realCandleCount === 0
   const noTradeHistory = trades.length === 0
@@ -509,7 +527,7 @@ export function PriceChart({
       const w = containerRef.current.clientWidth
       if (w > 0) {
         chart.applyOptions({ width: w, height })
-        if (barCountRef.current > 0) applyVisibleRange(chart, barCountRef.current, w)
+        if (barCountRef.current > 0) applyVisibleRange(chart, barCountRef.current, w, fitAllRef.current)
       }
     })
     ro.observe(el)
@@ -534,13 +552,13 @@ export function PriceChart({
     chartRef.current?.applyOptions({
       timeScale: {
         timeVisible: true,
-        secondsVisible: interval.seconds <= 60,
+        secondsVisible: interval.id === '1m',
         barSpacing: BAR_SPACING,
         minBarSpacing: MIN_BAR_SPACING,
         maxBarSpacing: MAX_BAR_SPACING,
       },
     })
-  }, [interval.seconds])
+  }, [interval.id])
 
   useEffect(() => {
     if (!ready || !candleRef.current || !volumeRef.current || !areaRef.current || !chartRef.current) {
@@ -609,11 +627,11 @@ export function PriceChart({
       areaRef.current.applyOptions({ visible: useArea })
 
       const w = containerRef.current?.clientWidth ?? 800
-      applyVisibleRange(chartRef.current, candleData.length, w)
+      applyVisibleRange(chartRef.current, candleData.length, w, intervalId === 'all')
     } catch (err) {
       console.error('[PriceChart] failed to set series data', err)
     }
-  }, [points, interval.seconds, ready, useArea, metric])
+  }, [points, interval.seconds, intervalId, ready, useArea, metric])
 
   const statusLabel = error ? 'Trade data issue' : loading ? 'Updating trades' : 'On-chain trades'
   const emptyOverlay = loading && noTradeHistory
@@ -645,21 +663,21 @@ export function PriceChart({
       ref={shellRef}
       className="relative w-full overflow-hidden rounded-xl border border-[var(--vyntra-border)] bg-[var(--vyntra-card)]"
     >
-      <div className="space-y-3 border-b border-[var(--vyntra-border)] px-3 py-3 sm:px-5">
-        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div className="space-y-3 border-b border-[var(--vyntra-border)] px-3 py-3.5 sm:px-5 sm:py-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-[var(--vyntra-muted)]">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--vyntra-muted)]">
               {metricLabel}
             </span>
-            <span className="rounded border border-amber-400/25 bg-amber-400/[0.08] px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+            <span className="chip px-2 py-1 text-[9px]">
               {activeChain.name}
             </span>
-            <span className="inline-flex items-center gap-1.5 rounded border border-[var(--vyntra-border)] px-2 py-1 font-mono text-[10px] text-[var(--vyntra-muted)]">
-              <span className={`h-1.5 w-1.5 rounded-full ${error ? 'bg-rose-400' : loading ? 'animate-pulse bg-amber-300' : 'bg-[var(--vyntra-success)]'}`} />
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--vyntra-border)] px-2.5 py-1 font-mono text-[9px] font-semibold uppercase tracking-wide text-[var(--vyntra-muted)]">
+              <span className={`h-1.5 w-1.5 rounded-full ${error ? 'bg-[var(--vyntra-danger)]' : loading ? 'animate-pulse motion-reduce:animate-none bg-amber-500' : 'bg-[var(--vyntra-success)]'}`} />
               {statusLabel}
             </span>
             {chartStyle === 'auto' && useArea && (
-              <span className="rounded border border-[var(--vyntra-border)] px-2 py-1 font-mono text-[10px] uppercase tracking-wide text-[var(--vyntra-faint)]">
+              <span className="rounded-full border border-[var(--vyntra-border)] px-2.5 py-1 font-mono text-[9px] uppercase tracking-wide text-[var(--vyntra-faint)]">
                 Early chart
               </span>
             )}
@@ -667,7 +685,7 @@ export function PriceChart({
               <button
                 type="button"
                 onClick={onRetry}
-                className="font-mono text-[10px] font-semibold text-rose-300 underline decoration-rose-300/40 underline-offset-2 hover:text-rose-200"
+                className="font-mono text-[10px] font-semibold text-[var(--vyntra-danger)] underline decoration-current/30 underline-offset-2 hover:opacity-75"
               >
                 Retry update
               </button>
@@ -675,7 +693,7 @@ export function PriceChart({
           </div>
 
           <div
-            className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-md border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-0.5"
+            className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-1"
             role="tablist"
             aria-label="Chart interval"
           >
@@ -687,11 +705,13 @@ export function PriceChart({
                   type="button"
                   role="tab"
                   aria-selected={active}
+                  aria-label={opt.id === 'all' ? 'Show all available trade history' : `Show ${opt.label} chart interval`}
+                  title={opt.id === 'all' ? 'All available indexed trade history' : undefined}
                   onClick={() => setIntervalId(opt.id)}
-                  className={`min-w-[2.4rem] shrink-0 rounded px-2 py-1.5 font-mono text-xs font-semibold tabular-nums transition ${
+                  className={`min-w-[2.4rem] shrink-0 rounded px-2 py-1.5 font-mono text-xs font-semibold tabular-nums transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vyntra-primary)] focus-visible:ring-offset-2 ${
                     active
-                      ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-bg)]'
-                      : 'text-[var(--vyntra-muted)] hover:bg-[var(--vyntra-elev)] hover:text-[var(--vyntra-fg)]'
+                      ? 'bg-[var(--vyntra-primary)] text-white shadow-sm'
+                      : 'text-[var(--vyntra-muted)] hover:bg-[var(--vyntra-hover)] hover:text-[var(--vyntra-fg)]'
                   }`}
                 >
                   {opt.label}
@@ -703,7 +723,7 @@ export function PriceChart({
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-md border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-0.5" role="tablist" aria-label="Chart metric">
+            <div className="inline-flex rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-1" role="tablist" aria-label="Chart metric">
               {([
                 ['mcap', 'Market cap'],
                 ['price', 'Token price'],
@@ -714,17 +734,17 @@ export function PriceChart({
                   role="tab"
                   aria-selected={metric === id}
                   onClick={() => setMetric(id)}
-                  className={`rounded px-2.5 py-1.5 font-mono text-[10px] font-semibold transition ${
+                  className={`rounded px-2.5 py-1.5 font-mono text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vyntra-primary)] focus-visible:ring-offset-2 ${
                     metric === id
-                      ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-bg)]'
-                      : 'text-[var(--vyntra-muted)] hover:text-[var(--vyntra-fg)]'
+                      ? 'bg-[var(--vyntra-primary)] text-white shadow-sm'
+                      : 'text-[var(--vyntra-muted)] hover:bg-[var(--vyntra-hover)] hover:text-[var(--vyntra-fg)]'
                   }`}
                 >
                   {label}
                 </button>
               ))}
             </div>
-            <div className="inline-flex rounded-md border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-0.5" role="tablist" aria-label="Chart style">
+            <div className="inline-flex rounded-lg border border-[var(--vyntra-border)] bg-[var(--vyntra-elev)] p-1" role="tablist" aria-label="Chart style">
               {([
                 ['auto', 'Auto'],
                 ['candles', 'Candles'],
@@ -736,10 +756,10 @@ export function PriceChart({
                   role="tab"
                   aria-selected={chartStyle === id}
                   onClick={() => setChartStyle(id)}
-                  className={`rounded px-2.5 py-1.5 font-mono text-[10px] font-semibold transition ${
+                  className={`rounded px-2.5 py-1.5 font-mono text-[10px] font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--vyntra-primary)] focus-visible:ring-offset-2 ${
                     chartStyle === id
-                      ? 'bg-[var(--vyntra-fg)] text-[var(--vyntra-bg)]'
-                      : 'text-[var(--vyntra-muted)] hover:text-[var(--vyntra-fg)]'
+                      ? 'bg-[var(--vyntra-primary)] text-white shadow-sm'
+                      : 'text-[var(--vyntra-muted)] hover:bg-[var(--vyntra-hover)] hover:text-[var(--vyntra-fg)]'
                   }`}
                 >
                   {label}
@@ -747,43 +767,33 @@ export function PriceChart({
               ))}
             </div>
           </div>
-          <p className="text-[10px] leading-4 text-[var(--vyntra-faint)]">
+          <p className="max-w-2xl text-[9px] leading-4 text-[var(--vyntra-faint)]">
             USD estimates use the current Hyperliquid mainnet HYPE spot price as a reference; Elysium testnet HYPE has no guaranteed dollar value.
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 divide-x divide-y divide-[var(--vyntra-border)] sm:grid-cols-3 xl:grid-cols-5 xl:divide-y-0">
-        <div className="min-w-0 px-3 py-3 sm:px-4">
-          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">Market cap</p>
-          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.currentMcap > 0 ? `${formatNativeValue(marketStats.currentMcap)} HYPE` : '—'}</p>
-          {marketStats.currentMcap > 0 && <HypeUsd value={marketStats.currentMcap} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />}
-        </div>
-        <div className="min-w-0 px-3 py-3 sm:px-4">
-          <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">Token price</p>
-          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.currentPrice > 0 ? `${formatNativeValue(marketStats.currentPrice)} HYPE` : '—'}</p>
-          {marketStats.currentPrice > 0 && <HypeUsd value={marketStats.currentPrice} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />}
-        </div>
-        <div className="min-w-0 px-3 py-3 sm:px-4">
+      <div className="grid grid-cols-3 divide-x divide-[var(--vyntra-border)] bg-[var(--vyntra-elev)]">
+        <div className="min-w-0 px-3 py-3 sm:px-5">
           <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">24h change</p>
-          <p className={`mt-1 truncate font-mono text-xs font-semibold ${marketStats.changePct == null ? 'text-[var(--vyntra-muted)]' : marketStats.changePct >= 0 ? 'text-[var(--vyntra-success)]' : 'text-rose-400'}`}>
+          <p className={`mt-1 truncate font-mono text-sm font-semibold tabular-nums ${marketStats.changePct == null ? 'text-[var(--vyntra-muted)]' : marketStats.changePct >= 0 ? 'text-[var(--vyntra-success)]' : 'text-[var(--vyntra-danger)]'}`}>
             {marketStats.changePct == null ? '—' : `${marketStats.changePct >= 0 ? '+' : ''}${marketStats.changePct.toFixed(2)}%`}
           </p>
-          <p className="mt-1 text-[10px] text-[var(--vyntra-faint)]">From recorded trades</p>
+          <p className="mt-1 text-[9px] text-[var(--vyntra-faint)]">Recorded trade prices</p>
         </div>
-        <div className="min-w-0 px-3 py-3 sm:px-4">
+        <div className="min-w-0 px-3 py-3 sm:px-5">
           <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">24h volume</p>
-          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{formatNativeValue(marketStats.volumeNative)} HYPE</p>
+          <p className="mt-1 truncate font-mono text-sm font-semibold tabular-nums text-[var(--vyntra-fg)]">{formatNativeValue(marketStats.volumeNative)} HYPE</p>
           <HypeUsd value={marketStats.volumeNative} className="mt-1 block text-[10px] text-[var(--vyntra-faint)]" />
         </div>
-        <div className="min-w-0 px-3 py-3 sm:px-4">
+        <div className="min-w-0 px-3 py-3 sm:px-5">
           <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--vyntra-faint)]">24h trades</p>
-          <p className="mt-1 truncate font-mono text-xs font-semibold text-[var(--vyntra-fg)]">{marketStats.trades24h.toLocaleString()}</p>
-          <p className="mt-1 text-[10px] text-[var(--vyntra-faint)]">On {activeChain.name}</p>
+          <p className="mt-1 truncate font-mono text-sm font-semibold tabular-nums text-[var(--vyntra-fg)]">{marketStats.trades24h.toLocaleString()}</p>
+          <p className="mt-1 text-[9px] text-[var(--vyntra-faint)]">On {activeChain.name}</p>
         </div>
       </div>
 
-      <div className="relative w-full" style={{ height }}>
+      <div className="relative w-full" style={{ height: `clamp(320px, 42vw, ${height}px)` }}>
         <div ref={containerRef} className="absolute inset-0" />
         {hoveredCandle && (
           <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100%-1.5rem)] rounded-lg border border-[var(--vyntra-border)] bg-[color-mix(in_srgb,var(--vyntra-card)_94%,transparent)] px-3 py-2 shadow-lg backdrop-blur-sm">

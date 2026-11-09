@@ -68,7 +68,7 @@ const docPages: DocPage[] = [
     sections: [
       {
         title: 'Review the launch',
-        body: <p>Open a market card to see its token and creator addresses, HYPE raised, chart, recent trades, and progress toward graduation. Verify that the token is registered by the Vyntra factory; the recognizable <code>7f7</code> address ending alone is not proof.</p>,
+        body: <p>Market cards show curve progress toward a locked V4 pool, HYPE raised, indexed trading volume, trade count, creator, and launch date. Use <strong>Top volume</strong> to sort launches by recorded volume. Open a token page for its chart, recent trades, token and creator addresses, and detailed pool status. Verify that the token is registered by the Vyntra factory; the recognizable <code>7f7</code> address ending alone is not proof.</p>,
       },
       {
         title: 'Buy and sell',
@@ -80,7 +80,7 @@ const docPages: DocPage[] = [
       },
       {
         title: 'Charts and indexed data',
-        body: <p>Charts, trade history, holders, wallet activity, and volume use the Vyntra indexer. It may lag the chain. Use the transaction link and Elysium explorer to verify a recent trade if it has not appeared in the app yet.</p>,
+        body: <p>Charts, trade history, holders, wallet activity, and volume use the Vyntra indexer. Choose a timeframe from one minute through one day, or select <strong>All</strong> to fit the available indexed history (up to 5,000 trades). Switch between market cap and token price, and use Auto, Candles, or Line to choose how the chart is drawn. The indexer may lag the chain; use a transaction link and the Elysium explorer to verify a recent trade if it has not appeared in the app yet.</p>,
       },
     ],
   },
