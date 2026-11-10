@@ -15,6 +15,16 @@ export default function handler(req: Request) {
     process.env.VITE_SPAWN_MARKET ||
     null
   const tursoUrl = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || ''
+  const rpcUrl =
+    process.env.INDEXER_RPC_URL ||
+    process.env.ELYSIUM_TESTNET_RPC_URL ||
+    'https://testnet-rpc.elysium.kinetiq.xyz'
+  let rpcHost = 'configured'
+  try {
+    rpcHost = new URL(rpcUrl).host
+  } catch {
+    // Do not return raw environment values from this public endpoint.
+  }
   return jsonCors({
     ok: true,
     service: 'vyntra-indexer',
@@ -32,9 +42,6 @@ export default function handler(req: Request) {
       process.env.VYNTRA_MARKET_START_BLOCK ||
       process.env.INDEXER_START_BLOCK ||
       null,
-    rpc:
-      process.env.INDEXER_RPC_URL ||
-      process.env.ELYSIUM_TESTNET_RPC_URL ||
-      'https://testnet-rpc.elysium.kinetiq.xyz',
+    rpc: rpcHost,
   })
 }

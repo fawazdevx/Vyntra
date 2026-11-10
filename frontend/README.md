@@ -31,7 +31,7 @@ command, and `dist` as the output directory. Set these variables in Production a
 | `VITE_FEE_ROUTER` | yes | Fee router |
 | `VITE_BOARD_ADDRESS` | optional | On-chain replies |
 | `VITE_KEEPER_ADDRESS` | optional | Keeper panel |
-| `VITE_INDEXER_URL` | optional | Indexer URL including `/api`, e.g. `https://vyntra-indexer.vercel.app/api` |
+| `VITE_INDEXER_URL` | optional | Indexer URL including `/api`, e.g. `https://<your-railway-domain>/api` |
 | `VITE_HIDDEN_LAUNCH_IDS` | optional | Comma-separated launch IDs to hide in Vyntra, such as an imported legacy launch (`1`) |
 | `VITE_WALLETCONNECT_ID` | yes for production wallets | WalletConnect Cloud project ID |
 | `IMGBB_API_KEY` | optional | Private ImgBB fallback for the server-side image uploader |

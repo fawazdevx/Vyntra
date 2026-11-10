@@ -180,7 +180,7 @@ export function About() {
                 <p className="mt-2 font-display text-3xl font-bold sm:text-4xl">1,000,000,000</p>
                 <p className="mt-1 text-sm text-[var(--vyntra-muted)]">VYNTRA · no post-deployment mint</p>
               </div>
-              <p className="rounded-lg bg-[var(--vyntra-elev)] px-3 py-2 text-sm font-semibold text-[var(--vyntra-primary)]">No team allocation</p>
+              <p className="rounded-lg bg-[var(--vyntra-elev)] px-3 py-2 text-sm font-semibold text-[var(--vyntra-primary)]">No direct team allocation at deployment</p>
             </div>
 
             <div className="mt-7 flex h-4 overflow-hidden rounded-full" aria-label="VYNTRA supply allocation">
@@ -201,8 +201,8 @@ export function About() {
               ))}
             </div>
             <div className="mt-6 border-t border-[var(--vyntra-border)] pt-5 text-sm leading-relaxed text-[var(--vyntra-muted)]">
-              <p><strong className="text-[var(--vyntra-fg)]">Reserve rules:</strong> a treasury Safe must schedule each campaign or reallocation through a 30-day timelock. To use unallocated tokens, governance first timelocks a move into an eligible program bucket, then separately timelocks the campaign. Campaign funding is capped at 50M VYNTRA in any rolling 365 days. Unclaimed tokens return to their original budget when a campaign ends, but that does not restore cap capacity.</p>
-              <p className="mt-3">Campaigns publish their amount, category, claim window, Merkle root, and a hash of public recipient details. Recipients can claim transferable VYNTRA. The reserve does not automatically add tokens to the trading pool.</p>
+              <p><strong className="text-[var(--vyntra-fg)]">Reserve rules:</strong> a treasury Safe must schedule each campaign or reallocation through a 30-day timelock. To use unallocated tokens, the Safe first timelocks a move into an eligible program bucket, then separately timelocks the campaign. Campaign funding is capped at 50M VYNTRA in any rolling 365 days. Unclaimed tokens return to their original budget when a campaign ends, but that does not restore cap capacity.</p>
+              <p className="mt-3">A campaign records its category, amount, claim window, Merkle root, metadata URI, and metadata hash on-chain. The contract does not inspect the metadata contents or exclude team wallets, so recipient lists and affiliations must be disclosed for each proposal. The reserve does not automatically add tokens to the trading pool.</p>
             </div>
           </div>
         </div>

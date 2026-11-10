@@ -84,7 +84,7 @@ export function createApp(opts: { basePath?: string } = {}) {
       chainId: CHAIN_ID,
       factory: FACTORY_ADDRESS ?? null,
       board: BOARD_ADDRESS ?? null,
-      rpc: RPC_URL,
+      rpc: safeRpcHost(RPC_URL),
       ready: Boolean(FACTORY_ADDRESS),
     }),
   )
@@ -362,4 +362,12 @@ export function createApp(opts: { basePath?: string } = {}) {
   })
 
   return app
+}
+
+function safeRpcHost(rpcUrl: string): string {
+  try {
+    return new URL(rpcUrl).host
+  } catch {
+    return 'configured'
+  }
 }
