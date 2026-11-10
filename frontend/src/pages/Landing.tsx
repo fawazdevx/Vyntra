@@ -94,8 +94,8 @@ export function Landing() {
     queryKey: ['vyntra', 'landing-stats'],
     queryFn: fetchStatsFromIndexer,
     enabled: isIndexerConfigured,
-    staleTime: 15_000,
-    refetchInterval: 30_000,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
     retry: 1,
   })
   const stats = statsQuery.data

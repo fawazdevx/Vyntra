@@ -145,9 +145,9 @@ export function createApp(opts: { basePath?: string } = {}) {
         SUM(CASE WHEN graduated = 0 AND migrated = 0 THEN 1 ELSE 0 END) AS on_curve,
         SUM(CASE WHEN graduated = 1 OR migrated = 1 THEN 1 ELSE 0 END) AS graduated,
         COALESCE(SUM(raised_native), 0) AS raised_native,
-        COALESCE(SUM(volume_native), 0) +
+        COALESCE((SELECT SUM(native_amount) FROM trades), 0) +
           COALESCE((SELECT SUM(native_amount) FROM platform_trades WHERE block_number >= ?), 0) AS volume_native,
-        COALESCE(SUM(trade_count), 0) +
+        COALESCE((SELECT COUNT(*) FROM trades), 0) +
           COALESCE((SELECT COUNT(*) FROM platform_trades WHERE block_number >= ?), 0) AS trades
        FROM launches`,
       [Number(VYNTRA_MARKET_START_BLOCK), Number(VYNTRA_MARKET_START_BLOCK)],
